@@ -9,11 +9,10 @@ import {
   Plus,
   ChevronRight,
   Trophy,
-  Flame,
   TrendingUp
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import {
   Dialog,
@@ -49,13 +48,14 @@ const goalTypes = [
   { value: "DAILY", label: "오늘 목표", icon: "✨" },
 ]
 
-const statusColors = {
+const _statusColors = {
   NOT_STARTED: "bg-gray-200",
   IN_PROGRESS: "bg-blue-500",
   COMPLETED: "bg-green-500",
   ON_HOLD: "bg-yellow-500",
   ABANDONED: "bg-red-500",
 }
+void _statusColors // prevent unused variable warning - will be used in future features
 
 export default function GoalsPage() {
   const queryClient = useQueryClient()

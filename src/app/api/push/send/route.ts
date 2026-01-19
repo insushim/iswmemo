@@ -51,14 +51,15 @@ export async function POST(req: NextRequest) {
             payload
           )
           return { success: true, endpoint: sub.endpoint }
-        } catch (error: any) {
+        } catch (error: unknown) {
           // 구독이 만료되었으면 삭제
-          if (error.statusCode === 410) {
+          const pushError = error as { statusCode?: number; message?: string }
+          if (pushError.statusCode === 410) {
             await prisma.pushSubscription.delete({
               where: { id: sub.id },
             })
           }
-          return { success: false, endpoint: sub.endpoint, error: error.message }
+          return { success: false, endpoint: sub.endpoint, error: pushError.message }
         }
       })
     )

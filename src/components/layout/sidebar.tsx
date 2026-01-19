@@ -65,7 +65,7 @@ interface SidebarProps {
 
 export function Sidebar({ className }: SidebarProps) {
   const pathname = usePathname()
-  const { user, isLoading } = useUser()
+  const { user } = useUser()
   const [expandedItems, setExpandedItems] = useState<string[]>([])
 
   const toggleExpand = (name: string) => {

@@ -11,8 +11,7 @@ import {
   Quote,
   Sun,
   Moon,
-  Cloud,
-  Flame
+  Cloud
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -29,13 +28,6 @@ const motivationalQuotes = [
   { content: "습관이 운명을 만든다.", author: "간디" },
 ]
 
-function getTimeIcon() {
-  const hour = new Date().getHours()
-  if (hour < 6 || hour >= 22) return Moon
-  if (hour < 12) return Sun
-  return Cloud
-}
-
 function getGreeting() {
   const hour = new Date().getHours()
   if (hour < 6) return "늦은 밤이에요"
@@ -46,8 +38,9 @@ function getGreeting() {
 }
 
 export default function TodayPage() {
-  const TimeIcon = getTimeIcon()
   const today = new Date()
+  const hour = today.getHours()
+  const TimeIcon = hour < 6 || hour >= 22 ? Moon : hour < 12 ? Sun : Cloud
   const todayQuote = motivationalQuotes[today.getDate() % motivationalQuotes.length]
 
   const { data: tasks = [] } = useQuery({

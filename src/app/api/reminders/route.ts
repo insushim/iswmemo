@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
+import { ReminderStatus } from "@prisma/client"
 
 const createReminderSchema = z.object({
   title: z.string().min(1),
@@ -21,12 +22,14 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url)
-    const status = searchParams.get("status")
+    const statusParam = searchParams.get("status")
 
     const reminders = await prisma.reminder.findMany({
       where: {
         userId: session.user.id,
-        ...(status ? { status: status as any } : {}),
+        ...(statusParam && Object.values(ReminderStatus).includes(statusParam as ReminderStatus)
+          ? { status: statusParam as ReminderStatus }
+          : {}),
       },
       include: {
         task: { select: { id: true, title: true } },

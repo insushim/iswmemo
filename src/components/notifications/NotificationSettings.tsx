@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Bell, BellOff, Smartphone, Check, AlertCircle } from "lucide-react"
+import { Bell, BellOff, Smartphone, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
@@ -185,7 +185,7 @@ export function NotificationSettings() {
           </div>
           <Switch
             checked={isSubscribed}
-            onCheckedChange={(checked) => {
+            onCheckedChange={(checked: boolean) => {
               if (checked) {
                 handleEnableNotifications()
               } else {
@@ -214,7 +214,7 @@ export function NotificationSettings() {
             <div className="text-sm">
               <p className="font-medium">앱처럼 사용하기</p>
               <p className="text-muted-foreground">
-                브라우저 메뉴에서 "홈 화면에 추가"를 선택하면 앱처럼 사용할 수 있습니다
+                브라우저 메뉴에서 &quot;홈 화면에 추가&quot;를 선택하면 앱처럼 사용할 수 있습니다
               </p>
             </div>
           </div>

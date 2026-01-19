@@ -46,9 +46,10 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 
 export async function subscribeToPush(registration: ServiceWorkerRegistration): Promise<PushSubscription | null> {
   try {
+    const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      applicationServerKey: applicationServerKey as BufferSource,
     });
 
     console.log('Push subscription:', subscription);

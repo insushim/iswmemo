@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { motion } from "framer-motion"
@@ -68,9 +68,11 @@ export default function NoteDetailPage({ params }: { params: Promise<{ id: strin
   const router = useRouter()
   const queryClient = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
-  const [editTitle, setEditTitle] = useState("")
-  const [editContent, setEditContent] = useState("")
-  const [editColor, setEditColor] = useState<string | null>(null)
+  const [editedValues, setEditedValues] = useState<{
+    title: string
+    content: string
+    color: string | null
+  } | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   const { data: note, isLoading, error } = useQuery<Note>({
@@ -85,13 +87,14 @@ export default function NoteDetailPage({ params }: { params: Promise<{ id: strin
     },
   })
 
-  useEffect(() => {
-    if (note) {
-      setEditTitle(note.title)
-      setEditContent(note.content)
-      setEditColor(note.color)
-    }
-  }, [note])
+  // 편집 중이면 editedValues 사용, 아니면 note 데이터 사용
+  const editTitle = useMemo(() => editedValues?.title ?? note?.title ?? "", [editedValues, note])
+  const editContent = useMemo(() => editedValues?.content ?? note?.content ?? "", [editedValues, note])
+  const editColor = useMemo(() => editedValues?.color ?? note?.color ?? null, [editedValues, note])
+
+  const setEditTitle = (title: string) => setEditedValues(prev => ({ ...prev, title, content: prev?.content ?? note?.content ?? "", color: prev?.color ?? note?.color ?? null }))
+  const setEditContent = (content: string) => setEditedValues(prev => ({ ...prev, title: prev?.title ?? note?.title ?? "", content, color: prev?.color ?? note?.color ?? null }))
+  const setEditColor = (color: string | null) => setEditedValues(prev => ({ ...prev, title: prev?.title ?? note?.title ?? "", content: prev?.content ?? note?.content ?? "", color }))
 
   const updateMutation = useMutation({
     mutationFn: async (data: { title: string; content: string; color: string | null }) => {
