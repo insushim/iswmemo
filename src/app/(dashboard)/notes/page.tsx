@@ -101,6 +101,72 @@ export default function NotesPage() {
     },
   })
 
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Note> }) => {
+      const res = await fetch(`/api/notes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error("Failed to update note")
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notes"] })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/notes/${id}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) throw new Error("Failed to delete note")
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notes"] })
+      toast.success("메모가 삭제되었습니다")
+    },
+    onError: () => {
+      toast.error("메모 삭제에 실패했습니다")
+    },
+  })
+
+  const handleToggleFavorite = (note: Note) => {
+    updateMutation.mutate(
+      { id: note.id, data: { isFavorite: !note.isFavorite } },
+      {
+        onSuccess: () => {
+          toast.success(note.isFavorite ? "즐겨찾기 해제됨" : "즐겨찾기 추가됨")
+        },
+        onError: () => {
+          toast.error("즐겨찾기 변경 실패")
+        },
+      }
+    )
+  }
+
+  const handleToggleArchive = (note: Note) => {
+    updateMutation.mutate(
+      { id: note.id, data: { isArchived: !note.isArchived } },
+      {
+        onSuccess: () => {
+          toast.success(note.isArchived ? "보관 해제됨" : "보관됨")
+        },
+        onError: () => {
+          toast.error("보관 변경 실패")
+        },
+      }
+    )
+  }
+
+  const handleDelete = (noteId: string) => {
+    if (confirm("정말 삭제하시겠습니까?")) {
+      deleteMutation.mutate(noteId)
+    }
+  }
+
   const notes: Note[] = data?.notes || []
 
   const handleCreate = () => {
@@ -267,15 +333,15 @@ export default function NotesPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem>
-                                <Star className="w-4 h-4 mr-2" />
-                                즐겨찾기
+                              <DropdownMenuItem onClick={() => handleToggleFavorite(note)}>
+                                <Star className={`w-4 h-4 mr-2 ${note.isFavorite ? "fill-amber-500 text-amber-500" : ""}`} />
+                                {note.isFavorite ? "즐겨찾기 해제" : "즐겨찾기"}
                               </DropdownMenuItem>
-                              <DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleToggleArchive(note)}>
                                 <Archive className="w-4 h-4 mr-2" />
-                                보관
+                                {note.isArchived ? "보관 해제" : "보관"}
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-red-600">
+                              <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(note.id)}>
                                 <Trash2 className="w-4 h-4 mr-2" />
                                 삭제
                               </DropdownMenuItem>
