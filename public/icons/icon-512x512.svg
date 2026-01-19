@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#22c55e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4ade80;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Background rounded square -->
+  <rect x="16" y="16" width="480" height="480" rx="80" fill="url(#grad1)"/>
+  <!-- Sprout stem -->
+  <path d="M256 400 L256 224" stroke="url(#grad2)" stroke-width="32" stroke-linecap="round"/>
+  <!-- Left leaf -->
+  <path d="M256 300 Q192 264 160 192 Q224 232 256 300" fill="#4ade80"/>
+  <!-- Right leaf -->
+  <path d="M256 224 Q320 192 352 128 Q288 168 256 224" fill="#22c55e"/>
+  <!-- Sparkles -->
+  <circle cx="376" cy="136" r="20" fill="#fbbf24"/>
+  <circle cx="136" cy="376" r="14" fill="#fbbf24" opacity="0.7"/>
+  <circle cx="400" cy="320" r="10" fill="#fbbf24" opacity="0.5"/>
+</svg>

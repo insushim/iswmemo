@@ -7,13 +7,27 @@ export const metadata: Metadata = {
   description: "메모, 목표, 습관 추적을 게이미피케이션으로 즐겁게 관리하세요",
   manifest: "/manifest.json",
   icons: {
-    icon: "/favicon.ico",
-    apple: "/icons/icon-192x192.png",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/apple-icon",
   },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "GrowthPad",
+  },
+  openGraph: {
+    title: "GrowthPad - 성장하는 나의 하루",
+    description: "메모, 목표, 습관 추적을 게이미피케이션으로 즐겁게 관리하세요",
+    siteName: "GrowthPad",
+    locale: "ko_KR",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "GrowthPad - 성장하는 나의 하루",
+    description: "메모, 목표, 습관 추적을 게이미피케이션으로 즐겁게 관리하세요",
   },
 }
 
