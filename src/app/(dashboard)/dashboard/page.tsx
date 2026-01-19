@@ -25,82 +25,97 @@ export default async function DashboardPage() {
   const todayStart = startOfDay(today)
   const todayEnd = endOfDay(today)
 
-  // 통계 데이터 조회
-  const [
-    user,
-    todayTasksCount,
-    completedTasksCount,
-    todayHabitsCount,
-    completedHabitsCount,
-    activeGoalsCount,
-    thisMonthNotesCount,
-    recentNotes,
-    todayTasks
-  ] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        name: true,
-        currentStreak: true,
-        longestStreak: true,
-        level: true,
-        experience: true,
-        totalPoints: true
-      }
-    }),
-    prisma.task.count({
-      where: {
-        userId,
-        OR: [
-          { dueDate: { gte: todayStart, lte: todayEnd } },
-          { dueDate: null, isCompleted: false }
-        ]
-      }
-    }),
-    prisma.task.count({
-      where: {
-        userId,
-        isCompleted: true,
-        completedAt: { gte: todayStart, lte: todayEnd }
-      }
-    }),
-    prisma.habit.count({
-      where: { userId, isActive: true }
-    }),
-    prisma.habitLog.count({
-      where: {
-        userId,
-        date: todayStart
-      }
-    }),
-    prisma.goal.count({
-      where: { userId, status: 'IN_PROGRESS' }
-    }),
-    prisma.note.count({
-      where: {
-        userId,
-        createdAt: { gte: startOfDay(new Date(today.getFullYear(), today.getMonth(), 1)) }
-      }
-    }),
-    prisma.note.findMany({
-      where: { userId, isArchived: false },
-      orderBy: { updatedAt: 'desc' },
-      take: 5,
-      select: { id: true, title: true, updatedAt: true, color: true }
-    }),
-    prisma.task.findMany({
-      where: {
-        userId,
-        OR: [
-          { dueDate: { gte: todayStart, lte: todayEnd } },
-          { dueDate: null, isCompleted: false }
-        ]
-      },
-      orderBy: [{ isCompleted: 'asc' }, { priority: 'desc' }],
-      take: 5,
-      select: { id: true, title: true, isCompleted: true, priority: true }
-    })
-  ])
+  // 기본값 설정
+  let user = null
+  let todayTasksCount = 0
+  let completedTasksCount = 0
+  let todayHabitsCount = 0
+  let completedHabitsCount = 0
+  let activeGoalsCount = 0
+  let thisMonthNotesCount = 0
+  let recentNotes: { id: string; title: string; updatedAt: Date; color: string | null }[] = []
+  let todayTasks: { id: string; title: string; isCompleted: boolean; priority: string }[] = []
+
+  try {
+    // 통계 데이터 조회
+    const results = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          name: true,
+          currentStreak: true,
+          longestStreak: true,
+          level: true,
+          experience: true,
+          totalPoints: true
+        }
+      }),
+      prisma.task.count({
+        where: {
+          userId,
+          OR: [
+            { dueDate: { gte: todayStart, lte: todayEnd } },
+            { dueDate: null, isCompleted: false }
+          ]
+        }
+      }),
+      prisma.task.count({
+        where: {
+          userId,
+          isCompleted: true,
+          completedAt: { gte: todayStart, lte: todayEnd }
+        }
+      }),
+      prisma.habit.count({
+        where: { userId, isActive: true }
+      }),
+      prisma.habitLog.count({
+        where: {
+          userId,
+          date: todayStart
+        }
+      }),
+      prisma.goal.count({
+        where: { userId, status: 'IN_PROGRESS' }
+      }),
+      prisma.note.count({
+        where: {
+          userId,
+          createdAt: { gte: startOfDay(new Date(today.getFullYear(), today.getMonth(), 1)) }
+        }
+      }),
+      prisma.note.findMany({
+        where: { userId, isArchived: false },
+        orderBy: { updatedAt: 'desc' },
+        take: 5,
+        select: { id: true, title: true, updatedAt: true, color: true }
+      }),
+      prisma.task.findMany({
+        where: {
+          userId,
+          OR: [
+            { dueDate: { gte: todayStart, lte: todayEnd } },
+            { dueDate: null, isCompleted: false }
+          ]
+        },
+        orderBy: [{ isCompleted: 'asc' }, { priority: 'desc' }],
+        take: 5,
+        select: { id: true, title: true, isCompleted: true, priority: true }
+      })
+    ])
+
+    user = results[0]
+    todayTasksCount = results[1]
+    completedTasksCount = results[2]
+    todayHabitsCount = results[3]
+    completedHabitsCount = results[4]
+    activeGoalsCount = results[5]
+    thisMonthNotesCount = results[6]
+    recentNotes = results[7]
+    todayTasks = results[8]
+  } catch (error) {
+    console.error('Dashboard data fetch error:', error)
+  }
 
   const greeting = getGreeting()
   const taskCompletionRate = todayTasksCount > 0 ? Math.round((completedTasksCount / todayTasksCount) * 100) : 0
