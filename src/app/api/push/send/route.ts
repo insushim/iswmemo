@@ -3,15 +3,32 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import webpush from "web-push"
 
-// VAPID 설정
-webpush.setVapidDetails(
-  "mailto:contact@growthpad.app",
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-)
+// VAPID 설정 - 환경 변수가 있을 때만 설정
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY
+
+let isVapidConfigured = false
+
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  try {
+    webpush.setVapidDetails(
+      "mailto:contact@growthpad.app",
+      VAPID_PUBLIC_KEY,
+      VAPID_PRIVATE_KEY
+    )
+    isVapidConfigured = true
+  } catch (error) {
+    console.error("VAPID configuration error:", error)
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
+    // VAPID가 설정되지 않았으면 푸시 알림 비활성화
+    if (!isVapidConfigured) {
+      return NextResponse.json({ error: "Push notifications not configured" }, { status: 503 })
+    }
+
     const session = await auth()
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
