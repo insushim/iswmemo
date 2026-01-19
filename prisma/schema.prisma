@@ -49,6 +49,8 @@ model User {
   quotes        UserQuote[]
   tags          Tag[]
   categories    Category[]
+  pushSubscriptions PushSubscription[]
+  reminders     Reminder[]
 }
 
 model Account {
@@ -260,6 +262,8 @@ model Task {
   goalId      String?
   goal        Goal?      @relation(fields: [goalId], references: [id])
 
+  reminders   Reminder[]
+
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -295,6 +299,7 @@ model Habit {
 
   goals       GoalHabit[]
   logs        HabitLog[]
+  reminders   Reminder[]
 
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
@@ -420,10 +425,12 @@ model CalendarEvent {
   isRecurring Boolean  @default(false)
   recurrence  Json?
 
-  reminders   Json?
+  reminderSettings   Json?
 
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  reminders   Reminder[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -508,4 +515,55 @@ model UserQuote {
   quoteId   String
 
   @@unique([userId, date])
+}
+
+// ==================== 푸시 알림 시스템 ====================
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Reminder {
+  id          String       @id @default(cuid())
+  title       String
+  body        String
+  scheduledAt DateTime
+  sentAt      DateTime?
+  status      ReminderStatus @default(PENDING)
+
+  // 관련 항목 (할일, 습관, 일정 등)
+  taskId      String?
+  task        Task?        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  habitId     String?
+  habit       Habit?       @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  eventId     String?
+  event       CalendarEvent? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([userId, scheduledAt, status])
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
 }

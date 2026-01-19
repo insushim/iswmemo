@@ -1,11 +1,9 @@
 "use client"
 
-import { useState } from "react"
 import { motion } from "framer-motion"
 import {
   Settings,
   User,
-  Bell,
   Palette,
   Shield,
   Download,
@@ -23,15 +21,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useUser } from "@/hooks/use-user"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { NotificationSettings } from "@/components/notifications/NotificationSettings"
 
 export default function SettingsPage() {
   const { user } = useUser()
   const { theme, setTheme } = useTheme()
-  const [notifications, setNotifications] = useState({
-    email: true,
-    push: true,
-    reminder: true,
-  })
 
   const themes = [
     { value: "light", label: "라이트", icon: Sun },
@@ -139,50 +133,7 @@ export default function SettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Bell className="w-5 h-5" />
-              알림
-            </CardTitle>
-            <CardDescription>알림 설정을 관리합니다</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[
-              { key: "email", label: "이메일 알림", description: "중요 알림을 이메일로 받습니다" },
-              { key: "push", label: "푸시 알림", description: "브라우저 푸시 알림을 받습니다" },
-              { key: "reminder", label: "리마인더", description: "할 일과 습관 리마인더를 받습니다" },
-            ].map((item) => (
-              <div key={item.key} className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">{item.label}</p>
-                  <p className="text-sm text-muted-foreground">{item.description}</p>
-                </div>
-                <button
-                  onClick={() =>
-                    setNotifications((prev) => ({
-                      ...prev,
-                      [item.key]: !prev[item.key as keyof typeof prev],
-                    }))
-                  }
-                  className={`w-12 h-6 rounded-full transition-colors ${
-                    notifications[item.key as keyof typeof notifications]
-                      ? "bg-primary"
-                      : "bg-muted"
-                  }`}
-                >
-                  <div
-                    className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                      notifications[item.key as keyof typeof notifications]
-                        ? "translate-x-6"
-                        : "translate-x-0.5"
-                    }`}
-                  />
-                </button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <NotificationSettings />
       </motion.div>
 
       {/* 보안 */}
