@@ -5,18 +5,18 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import {
   LayoutDashboard,
-  StickyNote,
-  Target,
   CheckCircle2,
-  Calendar
+  Repeat,
+  Target,
+  MoreHorizontal
 } from "lucide-react"
 
 const items = [
   { name: "홈", href: "/dashboard", icon: LayoutDashboard },
-  { name: "메모", href: "/notes", icon: StickyNote },
-  { name: "목표", href: "/goals", icon: Target },
   { name: "할일", href: "/tasks", icon: CheckCircle2 },
-  { name: "캘린더", href: "/calendar", icon: Calendar },
+  { name: "습관", href: "/habits", icon: Repeat },
+  { name: "목표", href: "/goals", icon: Target },
+  { name: "더보기", href: "/notes", icon: MoreHorizontal },
 ]
 
 interface MobileNavProps {
