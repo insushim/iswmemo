@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import "./globals.css"
 import { Providers } from "@/components/providers"
+import { Toaster } from "sonner"
 
 export const metadata: Metadata = {
   title: "GrowthPad - 성장하는 나의 하루",
@@ -48,6 +49,7 @@ export default function RootLayout({
     <html lang="ko" suppressHydrationWarning>
       <body className="antialiased">
         <Providers>{children}</Providers>
+        <Toaster position="top-center" richColors />
       </body>
     </html>
   )

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
-import { startOfDay, endOfDay } from "date-fns"
+import { startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns"
 import { awardPoints, checkAchievements } from "@/lib/gamification"
 
 const createTaskSchema = z.object({
@@ -24,12 +24,11 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const today = searchParams.get('today') === 'true'
     const completed = searchParams.get('completed')
+    const year = searchParams.get('year')
+    const month = searchParams.get('month')
 
-    const where: {
-      userId: string
-      isCompleted?: boolean
-      OR?: { dueDate?: { gte?: Date; lte?: Date } | null; isCompleted?: boolean }[]
-    } = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {
       userId: session.user.id,
     }
 
@@ -37,7 +36,16 @@ export async function GET(req: NextRequest) {
       where.isCompleted = completed === 'true'
     }
 
-    if (today) {
+    // 월별 조회 (캘린더용)
+    if (year && month) {
+      const targetDate = new Date(parseInt(year), parseInt(month) - 1, 1)
+      const monthStart = startOfMonth(targetDate)
+      const monthEnd = endOfMonth(targetDate)
+      where.dueDate = {
+        gte: monthStart,
+        lte: monthEnd,
+      }
+    } else if (today) {
       const todayStart = startOfDay(new Date())
       const todayEnd = endOfDay(new Date())
       where.OR = [
@@ -60,6 +68,11 @@ export async function GET(req: NextRequest) {
         { createdAt: 'desc' },
       ],
     })
+
+    // 월별 조회시 tasks 객체로 반환
+    if (year && month) {
+      return NextResponse.json({ tasks })
+    }
 
     return NextResponse.json(tasks)
   } catch (error) {
