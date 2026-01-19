@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { signIn } from "next-auth/react"
 import { motion } from "framer-motion"
-import { Brain, Mail, Lock, Loader2 } from "lucide-react"
+import { Sprout, Mail, Lock, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -64,7 +64,7 @@ export default function LoginPage() {
         <Card className="border-none shadow-xl">
           <CardHeader className="text-center pb-2">
             <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center mb-4">
-              <Brain className="w-10 h-10 text-white" />
+              <Sprout className="w-10 h-10 text-white" />
             </div>
             <CardTitle className="text-2xl gradient-text">GrowthPad</CardTitle>
             <CardDescription>성장하는 나의 하루에 로그인하세요</CardDescription>

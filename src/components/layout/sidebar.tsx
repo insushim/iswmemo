@@ -18,7 +18,7 @@ import {
   Sparkles,
   Flame,
   Star,
-  Brain,
+  Sprout,
   Clock,
   TrendingUp
 } from "lucide-react"
@@ -91,7 +91,7 @@ export function Sidebar({ className }: SidebarProps) {
       <div className="h-[var(--header-height)] flex items-center px-6 border-b border-border">
         <Link href="/dashboard" className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
-            <Brain className="w-6 h-6 text-white" />
+            <Sprout className="w-6 h-6 text-white" />
           </div>
           <div>
             <h1 className="font-bold text-lg gradient-text">GrowthPad</h1>

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import Link from "next/link"
-import { Brain, Sparkles, Target, Repeat, Trophy, ArrowRight } from "lucide-react"
+import { Sprout, Sparkles, Target, Repeat, Trophy, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export default async function HomePage() {
@@ -18,7 +18,7 @@ export default async function HomePage() {
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
-              <Brain className="w-6 h-6 text-white" />
+              <Sprout className="w-6 h-6 text-white" />
             </div>
             <span className="font-bold text-xl gradient-text">GrowthPad</span>
           </Link>
