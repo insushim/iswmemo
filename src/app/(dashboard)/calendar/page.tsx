@@ -51,7 +51,7 @@ import { toast } from "sonner"
 interface Task {
   id: string
   title: string
-  completed: boolean
+  isCompleted: boolean
   priority: string
   dueDate: string | null
   category: string | null
@@ -146,7 +146,7 @@ export default function CalendarPage() {
       const res = await fetch(`/api/tasks/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ completed }),
+        body: JSON.stringify({ isCompleted: completed }),
       })
       if (!res.ok) throw new Error("Failed to update task")
       return res.json()
@@ -589,12 +589,12 @@ export default function CalendarPage() {
                             onClick={() =>
                               toggleTaskMutation.mutate({
                                 id: task.id,
-                                completed: !task.completed,
+                                completed: !task.isCompleted,
                               })
                             }
                             className="flex-shrink-0"
                           >
-                            {task.completed ? (
+                            {task.isCompleted ? (
                               <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                             ) : (
                               <Circle className="w-5 h-5 text-muted-foreground" />
@@ -602,7 +602,7 @@ export default function CalendarPage() {
                           </button>
                           <span
                             className={`flex-1 text-sm truncate ${
-                              task.completed ? "line-through text-muted-foreground" : ""
+                              task.isCompleted ? "line-through text-muted-foreground" : ""
                             }`}
                           >
                             {task.title}

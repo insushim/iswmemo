@@ -11,10 +11,12 @@ import {
   CheckCircle2,
   Clock,
   Star,
-  Zap
+  Zap,
+  Loader2
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { useQuery } from "@tanstack/react-query"
 
 interface Achievement {
   id: string
@@ -27,11 +29,15 @@ interface Achievement {
   points: number
   isUnlocked: boolean
   unlockedAt?: string
-  progress?: number
-  target?: number
+  progress: number
+  target: number
 }
 
-const categoryIcons = {
+interface AchievementsResponse {
+  achievements: Achievement[]
+}
+
+const categoryIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   STREAK: Flame,
   NOTES: StickyNote,
   GOALS: Target,
@@ -42,7 +48,7 @@ const categoryIcons = {
   SPECIAL: Zap,
 }
 
-const categoryLabels = {
+const categoryLabels: Record<string, string> = {
   STREAK: "연속 출석",
   NOTES: "메모",
   GOALS: "목표",
@@ -53,150 +59,33 @@ const categoryLabels = {
   SPECIAL: "특별",
 }
 
-const defaultAchievements: Achievement[] = [
-  // STREAK
-  {
-    id: "1",
-    code: "streak_7",
-    name: "일주일 연속",
-    description: "7일 연속 접속하기",
-    icon: "flame",
-    color: "#f97316",
-    category: "STREAK",
-    points: 50,
-    isUnlocked: false,
-    progress: 3,
-    target: 7,
-  },
-  {
-    id: "2",
-    code: "streak_30",
-    name: "한 달 연속",
-    description: "30일 연속 접속하기",
-    icon: "flame",
-    color: "#f97316",
-    category: "STREAK",
-    points: 200,
-    isUnlocked: false,
-    progress: 3,
-    target: 30,
-  },
-  // NOTES
-  {
-    id: "3",
-    code: "notes_first",
-    name: "첫 메모",
-    description: "첫 번째 메모 작성하기",
-    icon: "sticky-note",
-    color: "#eab308",
-    category: "NOTES",
-    points: 10,
-    isUnlocked: true,
-    unlockedAt: "2024-01-15",
-  },
-  {
-    id: "4",
-    code: "notes_10",
-    name: "메모 수집가",
-    description: "메모 10개 작성하기",
-    icon: "sticky-note",
-    color: "#eab308",
-    category: "NOTES",
-    points: 50,
-    isUnlocked: false,
-    progress: 5,
-    target: 10,
-  },
-  // GOALS
-  {
-    id: "5",
-    code: "goals_first",
-    name: "목표 설정",
-    description: "첫 번째 목표 설정하기",
-    icon: "target",
-    color: "#8b5cf6",
-    category: "GOALS",
-    points: 15,
-    isUnlocked: true,
-    unlockedAt: "2024-01-16",
-  },
-  {
-    id: "6",
-    code: "goals_complete",
-    name: "목표 달성",
-    description: "목표 하나 완료하기",
-    icon: "target",
-    color: "#8b5cf6",
-    category: "GOALS",
-    points: 100,
-    isUnlocked: false,
-    progress: 0,
-    target: 1,
-  },
-  // HABITS
-  {
-    id: "7",
-    code: "habits_streak_7",
-    name: "습관 마스터",
-    description: "습관 7일 연속 달성하기",
-    icon: "repeat",
-    color: "#22c55e",
-    category: "HABITS",
-    points: 75,
-    isUnlocked: false,
-    progress: 2,
-    target: 7,
-  },
-  // TASKS
-  {
-    id: "8",
-    code: "tasks_10",
-    name: "할 일 정복자",
-    description: "할 일 10개 완료하기",
-    icon: "check-circle",
-    color: "#3b82f6",
-    category: "TASKS",
-    points: 50,
-    isUnlocked: false,
-    progress: 3,
-    target: 10,
-  },
-  // LEVEL
-  {
-    id: "9",
-    code: "level_5",
-    name: "새싹 성장",
-    description: "레벨 5 달성하기",
-    icon: "star",
-    color: "#fbbf24",
-    category: "LEVEL",
-    points: 100,
-    isUnlocked: false,
-    progress: 2,
-    target: 5,
-  },
-  // SPECIAL
-  {
-    id: "10",
-    code: "special_first_day",
-    name: "새로운 시작",
-    description: "GrowthPad 가입하기",
-    icon: "zap",
-    color: "#ec4899",
-    category: "SPECIAL",
-    points: 10,
-    isUnlocked: true,
-    unlockedAt: "2024-01-14",
-  },
-]
-
 export default function AchievementsPage() {
-  const unlockedCount = defaultAchievements.filter((a) => a.isUnlocked).length
-  const totalPoints = defaultAchievements
+  const { data, isLoading } = useQuery<AchievementsResponse>({
+    queryKey: ["achievements"],
+    queryFn: async () => {
+      const res = await fetch("/api/achievements")
+      if (!res.ok) throw new Error("Failed to fetch achievements")
+      return res.json()
+    },
+  })
+
+  const achievements = data?.achievements || []
+
+  const unlockedCount = achievements.filter((a) => a.isUnlocked).length
+  const totalPoints = achievements
     .filter((a) => a.isUnlocked)
     .reduce((sum, a) => sum + a.points, 0)
 
-  const categories = Object.keys(categoryLabels) as Array<keyof typeof categoryLabels>
+  // 업적 데이터에서 카테고리 목록 추출
+  const categories = [...new Set(achievements.map((a) => a.category))]
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -209,7 +98,7 @@ export default function AchievementsPage() {
           <div>
             <h1 className="text-2xl font-bold">업적</h1>
             <p className="text-sm text-muted-foreground">
-              {unlockedCount}/{defaultAchievements.length}개 달성
+              {unlockedCount}/{achievements.length}개 달성
             </p>
           </div>
         </div>
@@ -222,103 +111,111 @@ export default function AchievementsPage() {
         </div>
       </div>
 
-      {/* 카테고리별 업적 */}
-      {categories.map((category) => {
-        const categoryAchievements = defaultAchievements.filter(
-          (a) => a.category === category
-        )
-        const Icon = categoryIcons[category]
-        const unlockedInCategory = categoryAchievements.filter((a) => a.isUnlocked).length
+      {achievements.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            업적 데이터를 불러올 수 없습니다.
+          </CardContent>
+        </Card>
+      ) : (
+        /* 카테고리별 업적 */
+        categories.map((category) => {
+          const categoryAchievements = achievements.filter(
+            (a) => a.category === category
+          )
+          const Icon = categoryIcons[category] || Zap
+          const unlockedInCategory = categoryAchievements.filter((a) => a.isUnlocked).length
 
-        return (
-          <motion.div
-            key={category}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Icon className="w-5 h-5" />
-                    {categoryLabels[category]}
-                  </CardTitle>
-                  <span className="text-sm text-muted-foreground">
-                    {unlockedInCategory}/{categoryAchievements.length}
-                  </span>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  {categoryAchievements.map((achievement) => (
-                    <div
-                      key={achievement.id}
-                      className={`relative p-4 rounded-xl border transition-colors ${
-                        achievement.isUnlocked
-                          ? "bg-gradient-to-br from-amber-500/10 to-orange-500/10 border-amber-500/30"
-                          : "bg-muted/30 border-border"
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                            achievement.isUnlocked ? "" : "opacity-50 grayscale"
-                          }`}
-                          style={{ backgroundColor: `${achievement.color}20` }}
-                        >
-                          {achievement.isUnlocked ? (
-                            <Trophy
-                              className="w-6 h-6"
-                              style={{ color: achievement.color }}
-                            />
-                          ) : (
-                            <Lock className="w-6 h-6 text-muted-foreground" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3
-                            className={`font-semibold ${
-                              !achievement.isUnlocked && "text-muted-foreground"
+          return (
+            <motion.div
+              key={category}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Icon className="w-5 h-5" />
+                      {categoryLabels[category] || category}
+                    </CardTitle>
+                    <span className="text-sm text-muted-foreground">
+                      {unlockedInCategory}/{categoryAchievements.length}
+                    </span>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {categoryAchievements.map((achievement) => (
+                      <div
+                        key={achievement.id}
+                        className={`relative p-4 rounded-xl border transition-colors ${
+                          achievement.isUnlocked
+                            ? "bg-gradient-to-br from-amber-500/10 to-orange-500/10 border-amber-500/30"
+                            : "bg-muted/30 border-border"
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                              achievement.isUnlocked ? "" : "opacity-50 grayscale"
                             }`}
+                            style={{ backgroundColor: `${achievement.color}20` }}
                           >
-                            {achievement.name}
-                          </h3>
-                          <p className="text-sm text-muted-foreground">
-                            {achievement.description}
-                          </p>
-
-                          {!achievement.isUnlocked && achievement.progress !== undefined && (
-                            <div className="mt-2 space-y-1">
-                              <Progress
-                                value={(achievement.progress / (achievement.target || 1)) * 100}
-                                className="h-1.5"
+                            {achievement.isUnlocked ? (
+                              <Trophy
+                                className="w-6 h-6"
+                                style={{ color: achievement.color }}
                               />
-                              <p className="text-xs text-muted-foreground">
-                                {achievement.progress}/{achievement.target}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <span
-                            className={`text-sm font-bold ${
-                              achievement.isUnlocked
-                                ? "text-amber-500"
-                                : "text-muted-foreground"
-                            }`}
-                          >
-                            +{achievement.points}
-                          </span>
+                            ) : (
+                              <Lock className="w-6 h-6 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3
+                              className={`font-semibold ${
+                                !achievement.isUnlocked && "text-muted-foreground"
+                              }`}
+                            >
+                              {achievement.name}
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                              {achievement.description}
+                            </p>
+
+                            {!achievement.isUnlocked && achievement.target > 0 && (
+                              <div className="mt-2 space-y-1">
+                                <Progress
+                                  value={(achievement.progress / achievement.target) * 100}
+                                  className="h-1.5"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  {achievement.progress}/{achievement.target}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <span
+                              className={`text-sm font-bold ${
+                                achievement.isUnlocked
+                                  ? "text-amber-500"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              +{achievement.points}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )
-      })}
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )
+        })
+      )}
     </div>
   )
 }

@@ -9,15 +9,44 @@ import {
   Target,
   Repeat,
   Calendar,
-  Award
+  Award,
+  Loader2
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { useUser } from "@/hooks/use-user"
 import { levelSystem } from "@/lib/design-system"
+import { useQuery } from "@tanstack/react-query"
+
+interface WeeklyData {
+  day: string
+  tasks: number
+  habits: number
+}
+
+interface StatsSummary {
+  tasks: number
+  habits: number
+  notes: number
+  goals: number
+}
+
+interface StatsResponse {
+  weeklyData: WeeklyData[]
+  summary: StatsSummary
+}
 
 export default function StatsPage() {
   const { user } = useUser()
+
+  const { data: statsData, isLoading } = useQuery<StatsResponse>({
+    queryKey: ["stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/stats")
+      if (!res.ok) throw new Error("Failed to fetch stats")
+      return res.json()
+    },
+  })
 
   const level = user ? levelSystem.getLevel(user.experience) : 1
   const expProgress = user ? levelSystem.getExpProgress(user.experience) : 0
@@ -58,17 +87,10 @@ export default function StatsPage() {
     },
   ]
 
-  const weeklyData = [
-    { day: "월", tasks: 5, habits: 3 },
-    { day: "화", tasks: 8, habits: 4 },
-    { day: "수", tasks: 3, habits: 4 },
-    { day: "목", tasks: 6, habits: 3 },
-    { day: "금", tasks: 7, habits: 4 },
-    { day: "토", tasks: 2, habits: 2 },
-    { day: "일", tasks: 4, habits: 3 },
-  ]
+  const weeklyData = statsData?.weeklyData || []
+  const summary = statsData?.summary || { tasks: 0, habits: 0, notes: 0, goals: 0 }
 
-  const maxValue = Math.max(...weeklyData.map((d) => d.tasks + d.habits))
+  const maxValue = Math.max(...weeklyData.map((d) => d.tasks + d.habits), 1)
 
   return (
     <div className="space-y-6">
@@ -157,37 +179,49 @@ export default function StatsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-end justify-between h-48 gap-2">
-              {weeklyData.map((data, index) => (
-                <div key={data.day} className="flex-1 flex flex-col items-center gap-2">
-                  <div className="w-full flex flex-col gap-1" style={{ height: "160px" }}>
-                    <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: `${(data.tasks / maxValue) * 100}%` }}
-                      transition={{ delay: index * 0.1, duration: 0.5 }}
-                      className="w-full bg-blue-500 rounded-t"
-                    />
-                    <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: `${(data.habits / maxValue) * 100}%` }}
-                      transition={{ delay: index * 0.1 + 0.2, duration: 0.5 }}
-                      className="w-full bg-green-500 rounded-b"
-                    />
-                  </div>
-                  <span className="text-xs text-muted-foreground">{data.day}</span>
+            {isLoading ? (
+              <div className="flex items-center justify-center h-48">
+                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : weeklyData.length === 0 ? (
+              <div className="flex items-center justify-center h-48 text-muted-foreground">
+                데이터가 없습니다
+              </div>
+            ) : (
+              <>
+                <div className="flex items-end justify-between h-48 gap-2">
+                  {weeklyData.map((data, index) => (
+                    <div key={data.day} className="flex-1 flex flex-col items-center gap-2">
+                      <div className="w-full flex flex-col gap-1" style={{ height: "160px" }}>
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: `${(data.tasks / maxValue) * 100}%` }}
+                          transition={{ delay: index * 0.1, duration: 0.5 }}
+                          className="w-full bg-blue-500 rounded-t"
+                        />
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: `${(data.habits / maxValue) * 100}%` }}
+                          transition={{ delay: index * 0.1 + 0.2, duration: 0.5 }}
+                          className="w-full bg-green-500 rounded-b"
+                        />
+                      </div>
+                      <span className="text-xs text-muted-foreground">{data.day}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className="flex items-center justify-center gap-6 mt-4">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded bg-blue-500" />
-                <span className="text-sm text-muted-foreground">할 일</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded bg-green-500" />
-                <span className="text-sm text-muted-foreground">습관</span>
-              </div>
-            </div>
+                <div className="flex items-center justify-center gap-6 mt-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-blue-500" />
+                    <span className="text-sm text-muted-foreground">할 일</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-green-500" />
+                    <span className="text-sm text-muted-foreground">습관</span>
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </motion.div>
@@ -207,7 +241,7 @@ export default function StatsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">35</p>
+              <p className="text-2xl font-bold">{isLoading ? "-" : summary.tasks}</p>
               <p className="text-xs text-muted-foreground">이번 주 완료</p>
             </CardContent>
           </Card>
@@ -226,7 +260,7 @@ export default function StatsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">23</p>
+              <p className="text-2xl font-bold">{isLoading ? "-" : summary.habits}</p>
               <p className="text-xs text-muted-foreground">이번 주 달성</p>
             </CardContent>
           </Card>
@@ -245,7 +279,7 @@ export default function StatsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">12</p>
+              <p className="text-2xl font-bold">{isLoading ? "-" : summary.notes}</p>
               <p className="text-xs text-muted-foreground">이번 주 작성</p>
             </CardContent>
           </Card>
@@ -264,7 +298,7 @@ export default function StatsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">2</p>
+              <p className="text-2xl font-bold">{isLoading ? "-" : summary.goals}</p>
               <p className="text-xs text-muted-foreground">이번 주 달성</p>
             </CardContent>
           </Card>
