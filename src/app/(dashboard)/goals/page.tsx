@@ -1,8 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { motion } from "framer-motion"
+import toast from "react-hot-toast"
 import {
   Target,
   Plus,
@@ -57,8 +58,14 @@ const statusColors = {
 }
 
 export default function GoalsPage() {
+  const queryClient = useQueryClient()
   const [selectedType, setSelectedType] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [newGoal, setNewGoal] = useState({
+    title: "",
+    description: "",
+    type: "DAILY" as string,
+  })
 
   const { data: goals = [], isLoading } = useQuery<Goal[]>({
     queryKey: ["goals"],
@@ -71,6 +78,35 @@ export default function GoalsPage() {
       return res.json()
     },
   })
+
+  const createMutation = useMutation({
+    mutationFn: async (goal: { title: string; description: string; type: string }) => {
+      const res = await fetch("/api/goals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(goal),
+      })
+      if (!res.ok) throw new Error("Failed to create goal")
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["goals"] })
+      setIsCreateOpen(false)
+      setNewGoal({ title: "", description: "", type: "DAILY" })
+      toast.success("목표가 설정되었습니다")
+    },
+    onError: () => {
+      toast.error("목표 설정에 실패했습니다")
+    },
+  })
+
+  const handleCreate = () => {
+    if (!newGoal.title.trim()) {
+      toast.error("목표를 입력해주세요")
+      return
+    }
+    createMutation.mutate(newGoal)
+  }
 
   const filteredGoals = selectedType
     ? goals.filter((g) => g.type === selectedType)
@@ -109,11 +145,21 @@ export default function GoalsPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="title">목표</Label>
-                <Input id="title" placeholder="어떤 목표를 달성하고 싶으신가요?" />
+                <Input
+                  id="title"
+                  placeholder="어떤 목표를 달성하고 싶으신가요?"
+                  value={newGoal.title}
+                  onChange={(e) => setNewGoal({ ...newGoal, title: e.target.value })}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="description">설명 (선택)</Label>
-                <Textarea id="description" placeholder="목표에 대해 자세히 설명해주세요" />
+                <Textarea
+                  id="description"
+                  placeholder="목표에 대해 자세히 설명해주세요"
+                  value={newGoal.description}
+                  onChange={(e) => setNewGoal({ ...newGoal, description: e.target.value })}
+                />
               </div>
               <div className="space-y-2">
                 <Label>목표 유형</Label>
@@ -121,7 +167,13 @@ export default function GoalsPage() {
                   {goalTypes.map((type) => (
                     <button
                       key={type.value}
-                      className="flex items-center gap-2 p-3 rounded-lg border hover:border-primary hover:bg-primary/5 transition-colors text-left"
+                      type="button"
+                      onClick={() => setNewGoal({ ...newGoal, type: type.value })}
+                      className={`flex items-center gap-2 p-3 rounded-lg border transition-colors text-left ${
+                        newGoal.type === type.value
+                          ? "border-primary bg-primary/10"
+                          : "hover:border-primary hover:bg-primary/5"
+                      }`}
                     >
                       <span className="text-xl">{type.icon}</span>
                       <span className="text-sm font-medium">{type.label}</span>
@@ -129,7 +181,13 @@ export default function GoalsPage() {
                   ))}
                 </div>
               </div>
-              <Button className="w-full">목표 설정</Button>
+              <Button
+                className="w-full"
+                onClick={handleCreate}
+                disabled={createMutation.isPending}
+              >
+                {createMutation.isPending ? "설정 중..." : "목표 설정"}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
