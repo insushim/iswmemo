@@ -1,0 +1,511 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+
+// ==================== 인증 관련 ====================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // 게이미피케이션
+  level         Int       @default(1)
+  experience    Int       @default(0)
+  totalPoints   Int       @default(0)
+  currentStreak Int       @default(0)
+  longestStreak Int       @default(0)
+  lastActiveAt  DateTime  @default(now())
+
+  // 설정
+  timezone      String    @default("Asia/Seoul")
+  theme         String    @default("system")
+
+  // 관계
+  accounts      Account[]
+  sessions      Session[]
+  notes         Note[]
+  goals         Goal[]
+  habits        Habit[]
+  habitLogs     HabitLog[]
+  routines      Routine[]
+  routineLogs   RoutineLog[]
+  tasks         Task[]
+  events        CalendarEvent[]
+  achievements  UserAchievement[]
+  dailyRewards  DailyReward[]
+  quotes        UserQuote[]
+  tags          Tag[]
+  categories    Category[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==================== 메모 시스템 ====================
+
+model Note {
+  id          String   @id @default(cuid())
+  title       String
+  content     String   @db.Text
+  contentType String   @default("text")
+  isPinned    Boolean  @default(false)
+  isArchived  Boolean  @default(false)
+  isFavorite  Boolean  @default(false)
+  color       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+
+  tags        NoteTag[]
+  linkedGoals NoteGoal[]
+
+  @@index([userId, createdAt])
+  @@index([userId, isPinned])
+}
+
+model Tag {
+  id        String    @id @default(cuid())
+  name      String
+  color     String    @default("#6366f1")
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes     NoteTag[]
+  createdAt DateTime  @default(now())
+
+  @@unique([userId, name])
+}
+
+model NoteTag {
+  noteId String
+  tagId  String
+  note   Note   @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, tagId])
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  icon      String   @default("folder")
+  color     String   @default("#6366f1")
+  order     Int      @default(0)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes     Note[]
+  createdAt DateTime @default(now())
+
+  @@unique([userId, name])
+}
+
+// ==================== 목표 시스템 ====================
+
+model Goal {
+  id          String    @id @default(cuid())
+  title       String
+  description String?   @db.Text
+  type        GoalType
+  status      GoalStatus @default(IN_PROGRESS)
+  priority    Priority   @default(MEDIUM)
+  progress    Int        @default(0)
+  targetValue Int?
+  currentValue Int       @default(0)
+  unit        String?
+
+  startDate   DateTime   @default(now())
+  endDate     DateTime?
+  completedAt DateTime?
+
+  color       String     @default("#6366f1")
+  icon        String     @default("target")
+
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  parentId    String?
+  parent      Goal?      @relation("GoalHierarchy", fields: [parentId], references: [id])
+  children    Goal[]     @relation("GoalHierarchy")
+
+  tasks       Task[]
+  habits      GoalHabit[]
+  notes       NoteGoal[]
+  milestones  Milestone[]
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([userId, type, status])
+}
+
+enum GoalType {
+  LIFE
+  DECADE
+  FIVE_YEAR
+  YEARLY
+  QUARTERLY
+  MONTHLY
+  WEEKLY
+  DAILY
+}
+
+enum GoalStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+  ABANDONED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Milestone {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  isCompleted Boolean   @default(false)
+  targetDate  DateTime?
+  completedAt DateTime?
+  order       Int       @default(0)
+
+  goalId      String
+  goal        Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime  @default(now())
+}
+
+model NoteGoal {
+  noteId String
+  goalId String
+  note   Note   @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  goal   Goal   @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, goalId])
+}
+
+// ==================== 태스크/할일 시스템 ====================
+
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  isCompleted Boolean    @default(false)
+  priority    Priority   @default(MEDIUM)
+  dueDate     DateTime?
+  dueTime     String?
+  reminderAt  DateTime?
+  completedAt DateTime?
+  order       Int        @default(0)
+
+  isRecurring Boolean    @default(false)
+  recurrence  Json?
+
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  goalId      String?
+  goal        Goal?      @relation(fields: [goalId], references: [id])
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([userId, isCompleted, dueDate])
+}
+
+// ==================== 습관 시스템 ====================
+
+model Habit {
+  id          String     @id @default(cuid())
+  name        String
+  description String?
+  icon        String     @default("check-circle")
+  color       String     @default("#22c55e")
+
+  frequency   HabitFrequency @default(DAILY)
+  targetDays  Int[]      @default([0, 1, 2, 3, 4, 5, 6])
+  targetCount Int        @default(1)
+
+  reminderTime String?
+  timeOfDay    TimeOfDay @default(ANYTIME)
+
+  currentStreak Int      @default(0)
+  longestStreak Int      @default(0)
+  totalCompletions Int   @default(0)
+
+  isActive    Boolean    @default(true)
+  isArchived  Boolean    @default(false)
+  order       Int        @default(0)
+
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  goals       GoalHabit[]
+  logs        HabitLog[]
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([userId, isActive])
+}
+
+enum HabitFrequency {
+  DAILY
+  WEEKLY
+  CUSTOM
+}
+
+enum TimeOfDay {
+  MORNING
+  AFTERNOON
+  EVENING
+  NIGHT
+  ANYTIME
+}
+
+model HabitLog {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  count       Int      @default(1)
+  note        String?
+
+  habitId     String
+  habit       Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@unique([habitId, date])
+  @@index([userId, date])
+}
+
+model GoalHabit {
+  goalId  String
+  habitId String
+  goal    Goal   @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  habit   Habit  @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  @@id([goalId, habitId])
+}
+
+// ==================== 루틴 시스템 ====================
+
+model Routine {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  type        RoutineType
+  startTime   String?
+  endTime     String?
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  items       RoutineItem[]
+  logs        RoutineLog[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum RoutineType {
+  MORNING
+  AFTERNOON
+  EVENING
+  NIGHT
+  CUSTOM
+}
+
+model RoutineItem {
+  id          String   @id @default(cuid())
+  name        String
+  duration    Int?
+  order       Int      @default(0)
+
+  routineId   String
+  routine     Routine  @relation(fields: [routineId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+}
+
+model RoutineLog {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  startedAt   DateTime?
+  completedAt DateTime?
+  completedItems Int[]
+
+  routineId   String
+  routine     Routine  @relation(fields: [routineId], references: [id], onDelete: Cascade)
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@unique([routineId, date])
+}
+
+// ==================== 캘린더 시스템 ====================
+
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  location    String?
+
+  startAt     DateTime
+  endAt       DateTime
+  isAllDay    Boolean  @default(false)
+
+  color       String   @default("#6366f1")
+
+  isRecurring Boolean  @default(false)
+  recurrence  Json?
+
+  reminders   Json?
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, startAt])
+}
+
+// ==================== 게이미피케이션 ====================
+
+model Achievement {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String
+  icon        String
+  color       String   @default("#fbbf24")
+  category    AchievementCategory
+  points      Int      @default(10)
+
+  condition   Json
+
+  isSecret    Boolean  @default(false)
+
+  users       UserAchievement[]
+}
+
+enum AchievementCategory {
+  STREAK
+  NOTES
+  GOALS
+  HABITS
+  TASKS
+  ROUTINE
+  LEVEL
+  SPECIAL
+}
+
+model UserAchievement {
+  id            String   @id @default(cuid())
+  unlockedAt    DateTime @default(now())
+  isNew         Boolean  @default(true)
+
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+
+  @@unique([userId, achievementId])
+}
+
+model DailyReward {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  day         Int
+  points      Int
+  claimed     Boolean  @default(false)
+  claimedAt   DateTime?
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+// ==================== 동기부여 ====================
+
+model Quote {
+  id       String @id @default(cuid())
+  content  String @db.Text
+  author   String
+  category String @default("motivation")
+}
+
+model UserQuote {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  quoteId   String
+
+  @@unique([userId, date])
+}
