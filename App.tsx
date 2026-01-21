@@ -1,20 +1,28 @@
+import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as SplashScreen from 'expo-splash-screen';
+import Navigation from './src/navigation';
+import { useAuthStore } from './src/store/auth';
+
+// 스플래시 스크린 유지
+SplashScreen.preventAutoHideAsync();
 
 export default function App() {
+  const { initialize, isLoading } = useAuthStore();
+
+  useEffect(() => {
+    const init = async () => {
+      await initialize();
+      await SplashScreen.hideAsync();
+    };
+    init();
+  }, []);
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
+    <SafeAreaProvider>
       <StatusBar style="auto" />
-    </View>
+      <Navigation />
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
