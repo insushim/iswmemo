@@ -9,12 +9,17 @@ import { useAuthStore } from './src/store/auth';
 SplashScreen.preventAutoHideAsync();
 
 export default function App() {
-  const { initialize, isLoading } = useAuthStore();
+  const { checkAuth } = useAuthStore();
 
   useEffect(() => {
     const init = async () => {
-      await initialize();
-      await SplashScreen.hideAsync();
+      try {
+        await checkAuth();
+      } catch (error) {
+        console.error('Auth check failed:', error);
+      } finally {
+        await SplashScreen.hideAsync();
+      }
     };
     init();
   }, []);
