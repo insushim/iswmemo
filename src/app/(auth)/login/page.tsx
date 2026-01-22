@@ -151,6 +151,12 @@ export default function LoginPage() {
           </CardContent>
 
           <CardFooter className="flex flex-col gap-2">
+            <Link
+              href="/forgot-password"
+              className="text-sm text-muted-foreground hover:text-primary"
+            >
+              비밀번호를 잊으셨나요?
+            </Link>
             <p className="text-sm text-muted-foreground text-center">
               계정이 없으신가요?{" "}
               <Link href="/register" className="text-primary hover:underline font-medium">

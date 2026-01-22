@@ -1,6 +1,6 @@
 "use client"
 
-import { motion } from "framer-motion"
+import dynamic from "next/dynamic"
 import {
   TrendingUp,
   Flame,
@@ -17,6 +17,12 @@ import { Progress } from "@/components/ui/progress"
 import { useUser } from "@/hooks/use-user"
 import { levelSystem } from "@/lib/design-system"
 import { useQuery } from "@tanstack/react-query"
+
+// 동적 import로 framer-motion 로드 (코드 스플리팅)
+const MotionDiv = dynamic(
+  () => import("framer-motion").then(mod => mod.motion.div),
+  { ssr: false }
+)
 
 interface WeeklyData {
   day: string
@@ -108,7 +114,7 @@ export default function StatsPage() {
       </div>
 
       {/* 레벨 카드 */}
-      <motion.div
+      <MotionDiv
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
@@ -134,12 +140,12 @@ export default function StatsPage() {
             </div>
           </CardContent>
         </Card>
-      </motion.div>
+      </MotionDiv>
 
       {/* 주요 통계 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat, index) => (
-          <motion.div
+          <MotionDiv
             key={stat.label}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -161,12 +167,12 @@ export default function StatsPage() {
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </MotionDiv>
         ))}
       </div>
 
       {/* 주간 활동 차트 */}
-      <motion.div
+      <MotionDiv
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
@@ -193,13 +199,13 @@ export default function StatsPage() {
                   {weeklyData.map((data, index) => (
                     <div key={data.day} className="flex-1 flex flex-col items-center gap-2">
                       <div className="w-full flex flex-col gap-1" style={{ height: "160px" }}>
-                        <motion.div
+                        <MotionDiv
                           initial={{ height: 0 }}
                           animate={{ height: `${(data.tasks / maxValue) * 100}%` }}
                           transition={{ delay: index * 0.1, duration: 0.5 }}
                           className="w-full bg-blue-500 rounded-t"
                         />
-                        <motion.div
+                        <MotionDiv
                           initial={{ height: 0 }}
                           animate={{ height: `${(data.habits / maxValue) * 100}%` }}
                           transition={{ delay: index * 0.1 + 0.2, duration: 0.5 }}
@@ -224,11 +230,11 @@ export default function StatsPage() {
             )}
           </CardContent>
         </Card>
-      </motion.div>
+      </MotionDiv>
 
       {/* 카테고리별 통계 */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <motion.div
+        <MotionDiv
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
@@ -245,9 +251,9 @@ export default function StatsPage() {
               <p className="text-xs text-muted-foreground">이번 주 완료</p>
             </CardContent>
           </Card>
-        </motion.div>
+        </MotionDiv>
 
-        <motion.div
+        <MotionDiv
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6 }}
@@ -264,9 +270,9 @@ export default function StatsPage() {
               <p className="text-xs text-muted-foreground">이번 주 달성</p>
             </CardContent>
           </Card>
-        </motion.div>
+        </MotionDiv>
 
-        <motion.div
+        <MotionDiv
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.7 }}
@@ -283,9 +289,9 @@ export default function StatsPage() {
               <p className="text-xs text-muted-foreground">이번 주 작성</p>
             </CardContent>
           </Card>
-        </motion.div>
+        </MotionDiv>
 
-        <motion.div
+        <MotionDiv
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.8 }}
@@ -302,7 +308,7 @@ export default function StatsPage() {
               <p className="text-xs text-muted-foreground">이번 주 달성</p>
             </CardContent>
           </Card>
-        </motion.div>
+        </MotionDiv>
       </div>
     </div>
   )

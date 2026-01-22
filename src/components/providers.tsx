@@ -3,8 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { SessionProvider } from "next-auth/react"
 import { ThemeProvider } from "next-themes"
-import { Toaster } from "react-hot-toast"
-import { useState } from "react"
+import { useState, useMemo } from "react"
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -12,8 +11,22 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 60 * 1000,
+            // 5분 동안 데이터를 fresh로 유지
+            staleTime: 5 * 60 * 1000,
+            // 10분 동안 캐시 유지
+            gcTime: 10 * 60 * 1000,
+            // 창 포커스 시 refetch 안함
             refetchOnWindowFocus: false,
+            // 마운트 시 refetch 안함 (캐시 사용)
+            refetchOnMount: false,
+            // 재연결 시 refetch 안함
+            refetchOnReconnect: false,
+            // 실패 시 1회만 재시도
+            retry: 1,
+            retryDelay: 1000,
+          },
+          mutations: {
+            retry: 1,
           },
         },
       })
@@ -29,17 +42,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
           disableTransitionOnChange
         >
           {children}
-          <Toaster
-            position="bottom-right"
-            toastOptions={{
-              duration: 3000,
-              style: {
-                background: 'hsl(var(--card))',
-                color: 'hsl(var(--card-foreground))',
-                border: '1px solid hsl(var(--border))',
-              },
-            }}
-          />
         </ThemeProvider>
       </QueryClientProvider>
     </SessionProvider>

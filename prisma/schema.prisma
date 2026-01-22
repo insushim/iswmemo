@@ -9,7 +9,7 @@ datasource db {
 }
 
 
-// ==================== 인증 관련 ====================
+// ==================== ?�증 관??====================
 
 model User {
   id            String    @id @default(cuid())
@@ -21,7 +21,7 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  // 게이미피케이션
+  // 게이미피케?�션
   level         Int       @default(1)
   experience    Int       @default(0)
   totalPoints   Int       @default(0)
@@ -29,12 +29,11 @@ model User {
   longestStreak Int       @default(0)
   lastActiveAt  DateTime  @default(now())
 
-  // 설정
+  // ?�정
   timezone      String    @default("Asia/Seoul")
   theme         String    @default("system")
 
-  // 관계
-  accounts      Account[]
+  // 관�?  accounts      Account[]
   sessions      Session[]
   notes         Note[]
   goals         Goal[]
@@ -88,7 +87,17 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-// ==================== 메모 시스템 ====================
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expires   DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([email, token])
+}
+
+// ==================== 메모 ?�스??====================
 
 model Note {
   id          String   @id @default(cuid())
@@ -150,7 +159,7 @@ model Category {
   @@unique([userId, name])
 }
 
-// ==================== 목표 시스템 ====================
+// ==================== 목표 ?�스??====================
 
 model Goal {
   id          String    @id @default(cuid())
@@ -239,7 +248,7 @@ model NoteGoal {
   @@id([noteId, goalId])
 }
 
-// ==================== 태스크/할일 시스템 ====================
+// ==================== ?�스???�일 ?�스??====================
 
 model Task {
   id          String     @id @default(cuid())
@@ -268,9 +277,11 @@ model Task {
   updatedAt   DateTime   @updatedAt
 
   @@index([userId, isCompleted, dueDate])
+  @@index([userId, dueDate])
+  @@index([userId, completedAt])
 }
 
-// ==================== 습관 시스템 ====================
+// ==================== ?��? ?�스??====================
 
 model Habit {
   id          String     @id @default(cuid())
@@ -348,7 +359,7 @@ model GoalHabit {
   @@id([goalId, habitId])
 }
 
-// ==================== 루틴 시스템 ====================
+// ==================== 루틴 ?�스??====================
 
 model Routine {
   id          String   @id @default(cuid())
@@ -408,7 +419,7 @@ model RoutineLog {
   @@unique([routineId, date])
 }
 
-// ==================== 캘린더 시스템 ====================
+// ==================== 캘린???�스??====================
 
 model CalendarEvent {
   id          String   @id @default(cuid())
@@ -436,9 +447,10 @@ model CalendarEvent {
   updatedAt   DateTime @updatedAt
 
   @@index([userId, startAt])
+  @@index([userId, startAt, endAt])
 }
 
-// ==================== 게이미피케이션 ====================
+// ==================== 게이미피케?�션 ====================
 
 model Achievement {
   id          String   @id @default(cuid())
@@ -496,7 +508,7 @@ model DailyReward {
   @@unique([userId, date])
 }
 
-// ==================== 동기부여 ====================
+// ==================== ?�기부??====================
 
 model Quote {
   id       String @id @default(cuid())
@@ -517,7 +529,7 @@ model UserQuote {
   @@unique([userId, date])
 }
 
-// ==================== 푸시 알림 시스템 ====================
+// ==================== ?�시 ?�림 ?�스??====================
 
 model PushSubscription {
   id        String   @id @default(cuid())
@@ -542,7 +554,7 @@ model Reminder {
   sentAt      DateTime?
   status      ReminderStatus @default(PENDING)
 
-  // 관련 항목 (할일, 습관, 일정 등)
+  // 관????�� (?�일, ?��?, ?�정 ??
   taskId      String?
   task        Task?        @relation(fields: [taskId], references: [id], onDelete: Cascade)
 

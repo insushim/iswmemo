@@ -1,7 +1,25 @@
 import type { Metadata, Viewport } from "next"
+import { Outfit, Noto_Sans_KR } from "next/font/google"
 import "./globals.css"
 import { Providers } from "@/components/providers"
 import { Toaster } from "sonner"
+
+// 폰트 최적화 - next/font로 로컬 캐싱
+const outfit = Outfit({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  display: 'swap',
+  variable: '--font-outfit',
+  preload: true,
+})
+
+const notoSansKr = Noto_Sans_KR({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  display: 'swap',
+  variable: '--font-noto-sans-kr',
+  preload: true,
+})
 
 export const metadata: Metadata = {
   title: "GrowthPad - 성장하는 나의 하루",
@@ -46,8 +64,12 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="ko" suppressHydrationWarning>
-      <body className="antialiased">
+    <html
+      lang="ko"
+      suppressHydrationWarning
+      className={`${outfit.variable} ${notoSansKr.variable}`}
+    >
+      <body className="antialiased font-sans">
         <Providers>{children}</Providers>
         <Toaster position="top-center" richColors />
       </body>
