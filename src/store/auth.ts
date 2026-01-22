@@ -15,7 +15,11 @@ interface AuthState {
   checkAuth: () => Promise<void>;
 }
 
-const API_URL = 'https://growthpad-b7ojapdtv-insu-shims-projects.vercel.app';
+// 안정적인 프로덕션 URL 사용
+const API_URL = 'https://growthpad.vercel.app';
+
+// SecureStore 키
+const TOKEN_KEY = 'auth_token';
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
@@ -29,29 +33,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ isLoading: true });
 
-      // 로그인 요청
-      const response = await fetch(`${API_URL}/api/auth/callback/credentials`, {
+      // 새로운 모바일 전용 JWT 인증 API 사용
+      const response = await fetch(`${API_URL}/api/auth/mobile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          password,
-          csrfToken: '',
-          callbackUrl: '/',
-          json: true
-        }),
+        body: JSON.stringify({ email, password }),
       });
 
-      if (response.ok) {
-        // 세션 쿠키 저장 (모바일에서는 토큰 방식으로 저장)
-        await SecureStore.setItemAsync('user_email', email);
-        await SecureStore.setItemAsync('user_password', password);
+      const data = await response.json();
 
-        // 사용자 정보 가져오기
-        await get().checkAuth();
+      if (response.ok && data.success) {
+        // JWT 토큰 안전하게 저장
+        await SecureStore.setItemAsync(TOKEN_KEY, data.token);
+
+        // 사용자 정보 설정
+        set({ user: data.user, isAuthenticated: true });
         return true;
+      } else {
+        console.error('Login failed:', data.error);
+        return false;
       }
-      return false;
     } catch (error) {
       console.error('Login error:', error);
       return false;
@@ -71,7 +72,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
 
       if (response.ok) {
-        // 자동 로그인
+        // 회원가입 성공 후 자동 로그인
         return await get().login(email, password);
       }
       return false;
@@ -84,8 +85,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
-    await SecureStore.deleteItemAsync('user_email');
-    await SecureStore.deleteItemAsync('user_password');
+    // 저장된 토큰 삭제
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
     set({ user: null, isAuthenticated: false });
   },
 
@@ -93,27 +94,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ isLoading: true });
 
-      const email = await SecureStore.getItemAsync('user_email');
-      const password = await SecureStore.getItemAsync('user_password');
+      // 저장된 JWT 토큰 확인
+      const token = await SecureStore.getItemAsync(TOKEN_KEY);
 
-      if (email && password) {
-        // 저장된 자격 증명으로 사용자 정보 요청
-        const response = await fetch(`${API_URL}/api/user`, {
+      if (token) {
+        // 토큰으로 사용자 정보 검증
+        const response = await fetch(`${API_URL}/api/auth/mobile/verify`, {
+          method: 'GET',
           headers: {
             'Content-Type': 'application/json',
-            'X-User-Email': email,
+            'Authorization': `Bearer ${token}`,
           },
         });
 
         if (response.ok) {
           const data = await response.json();
-          set({ user: data.user, isAuthenticated: true });
-        } else {
-          set({ user: null, isAuthenticated: false });
+          if (data.success && data.user) {
+            set({ user: data.user, isAuthenticated: true });
+            return;
+          }
         }
-      } else {
-        set({ user: null, isAuthenticated: false });
+
+        // 토큰이 유효하지 않으면 삭제
+        await SecureStore.deleteItemAsync(TOKEN_KEY);
       }
+
+      set({ user: null, isAuthenticated: false });
     } catch (error) {
       console.error('Auth check error:', error);
       set({ user: null, isAuthenticated: false });
