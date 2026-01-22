@@ -9,7 +9,7 @@ datasource db {
 }
 
 
-// ==================== ?�증 관??====================
+// ==================== ?�증 관??====================
 
 model User {
   id            String    @id @default(cuid())
@@ -21,7 +21,7 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  // 게이미피케?�션
+  // 게이미피케?�션
   level         Int       @default(1)
   experience    Int       @default(0)
   totalPoints   Int       @default(0)
@@ -29,11 +29,12 @@ model User {
   longestStreak Int       @default(0)
   lastActiveAt  DateTime  @default(now())
 
-  // ?�정
+  // ?�정
   timezone      String    @default("Asia/Seoul")
   theme         String    @default("system")
 
-  // 관�?  accounts      Account[]
+  // 관계
+  accounts      Account[]
   sessions      Session[]
   notes         Note[]
   goals         Goal[]
@@ -97,7 +98,7 @@ model PasswordResetToken {
   @@unique([email, token])
 }
 
-// ==================== 메모 ?�스??====================
+// ==================== 메모 ?�스??====================
 
 model Note {
   id          String   @id @default(cuid())
@@ -159,7 +160,7 @@ model Category {
   @@unique([userId, name])
 }
 
-// ==================== 목표 ?�스??====================
+// ==================== 목표 ?�스??====================
 
 model Goal {
   id          String    @id @default(cuid())
@@ -248,7 +249,7 @@ model NoteGoal {
   @@id([noteId, goalId])
 }
 
-// ==================== ?�스???�일 ?�스??====================
+// ==================== ?�스???�일 ?�스??====================
 
 model Task {
   id          String     @id @default(cuid())
@@ -281,7 +282,7 @@ model Task {
   @@index([userId, completedAt])
 }
 
-// ==================== ?��? ?�스??====================
+// ==================== ?��? ?�스??====================
 
 model Habit {
   id          String     @id @default(cuid())
@@ -359,7 +360,7 @@ model GoalHabit {
   @@id([goalId, habitId])
 }
 
-// ==================== 루틴 ?�스??====================
+// ==================== 루틴 ?�스??====================
 
 model Routine {
   id          String   @id @default(cuid())
@@ -419,7 +420,7 @@ model RoutineLog {
   @@unique([routineId, date])
 }
 
-// ==================== 캘린???�스??====================
+// ==================== 캘린???�스??====================
 
 model CalendarEvent {
   id          String   @id @default(cuid())
@@ -450,7 +451,7 @@ model CalendarEvent {
   @@index([userId, startAt, endAt])
 }
 
-// ==================== 게이미피케?�션 ====================
+// ==================== 게이미피케?�션 ====================
 
 model Achievement {
   id          String   @id @default(cuid())
@@ -508,7 +509,7 @@ model DailyReward {
   @@unique([userId, date])
 }
 
-// ==================== ?�기부??====================
+// ==================== ?�기부??====================
 
 model Quote {
   id       String @id @default(cuid())
@@ -529,7 +530,7 @@ model UserQuote {
   @@unique([userId, date])
 }
 
-// ==================== ?�시 ?�림 ?�스??====================
+// ==================== ?�시 ?�림 ?�스??====================
 
 model PushSubscription {
   id        String   @id @default(cuid())
@@ -554,7 +555,7 @@ model Reminder {
   sentAt      DateTime?
   status      ReminderStatus @default(PENDING)
 
-  // 관????�� (?�일, ?��?, ?�정 ??
+  // 관????�� (?�일, ?��?, ?�정 ??
   taskId      String?
   task        Task?        @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
