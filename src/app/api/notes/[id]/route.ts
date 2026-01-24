@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getAuthUserId } from "@/lib/mobile-auth"
 import { prisma } from "@/lib/prisma"
 
 // GET /api/notes/[id] - 메모 상세 조회
@@ -8,9 +8,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(request)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const { id } = await params
@@ -29,7 +29,7 @@ export async function GET(
       return NextResponse.json({ error: "Note not found" }, { status: 404 })
     }
 
-    if (note.userId !== session.user.id) {
+    if (note.userId !== userId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -46,9 +46,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(request)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const { id } = await params
@@ -62,7 +62,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Note not found" }, { status: 404 })
     }
 
-    if (note.userId !== session.user.id) {
+    if (note.userId !== userId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -97,9 +97,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(request)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const { id } = await params
@@ -112,7 +112,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Note not found" }, { status: 404 })
     }
 
-    if (note.userId !== session.user.id) {
+    if (note.userId !== userId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

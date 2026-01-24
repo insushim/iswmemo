@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getAuthUserId } from "@/lib/mobile-auth"
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 import { awardPoints, checkAchievements } from "@/lib/gamification"
@@ -17,9 +17,9 @@ const createNoteSchema = z.object({
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const { searchParams } = new URL(req.url)
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       isFavorite?: boolean
       tags?: { some: { tagId: string } }
     } = {
-      userId: session.user.id,
+      userId,
       isArchived,
     }
 
@@ -92,9 +92,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const body = await req.json()
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
         color: validatedData.color || null,
         isPinned: validatedData.isPinned || false,
         isFavorite: validatedData.isFavorite || false,
-        userId: session.user.id,
+        userId,
         tags: validatedData.tagIds ? {
           create: validatedData.tagIds.map(tagId => ({ tagId }))
         } : undefined,
@@ -121,8 +121,8 @@ export async function POST(req: NextRequest) {
     })
 
     // 포인트 지급 & 업적 체크
-    await awardPoints(session.user.id, 'NOTE_CREATE')
-    await checkAchievements(session.user.id, 'NOTES')
+    await awardPoints(userId, 'NOTE_CREATE')
+    await checkAchievements(userId, 'NOTES')
 
     return NextResponse.json(note, { status: 201 })
   } catch (error) {

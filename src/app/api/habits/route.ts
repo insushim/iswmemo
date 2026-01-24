@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getAuthUserId } from "@/lib/mobile-auth"
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 import { startOfDay, subDays } from "date-fns"
@@ -16,12 +16,11 @@ const createHabitSchema = z.object({
   timeOfDay: z.enum(['MORNING', 'AFTERNOON', 'EVENING', 'NIGHT', 'ANYTIME']).default('ANYTIME'),
 })
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const today = startOfDay(new Date())
@@ -29,7 +28,7 @@ export async function GET(_req: NextRequest) {
 
     const habits = await prisma.habit.findMany({
       where: {
-        userId: session.user.id,
+        userId,
         isActive: true,
         isArchived: false,
       },
@@ -53,9 +52,9 @@ export async function GET(_req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const body = await req.json()
@@ -64,7 +63,7 @@ export async function POST(req: NextRequest) {
     const habit = await prisma.habit.create({
       data: {
         ...validatedData,
-        userId: session.user.id,
+        userId,
       },
     })
 

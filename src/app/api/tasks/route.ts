@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getAuthUserId } from "@/lib/mobile-auth"
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 import { startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns"
@@ -16,9 +16,9 @@ const createTaskSchema = z.object({
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const { searchParams } = new URL(req.url)
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
-      userId: session.user.id,
+      userId,
     }
 
     if (completed !== null) {
@@ -83,9 +83,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const body = await req.json()
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
         dueDate: validatedData.dueDate ? new Date(validatedData.dueDate) : null,
         dueTime: validatedData.dueTime,
         goalId: validatedData.goalId,
-        userId: session.user.id,
+        userId,
       },
       include: {
         goal: {
@@ -120,20 +120,25 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
-    const body = await req.json()
-    const { id, isCompleted, ...rest } = body
+    // URL 쿼리에서 id 가져오기 (모바일 앱 호환)
+    const { searchParams } = new URL(req.url)
+    const queryId = searchParams.get('id')
 
+    const body = await req.json()
+    const { id: bodyId, isCompleted, ...rest } = body
+
+    const id = queryId || bodyId
     if (!id) {
       return NextResponse.json({ error: "Task ID required" }, { status: 400 })
     }
 
     const task = await prisma.task.findFirst({
-      where: { id, userId: session.user.id }
+      where: { id, userId }
     })
 
     if (!task) {
@@ -156,13 +161,47 @@ export async function PATCH(req: NextRequest) {
 
     // 완료 시 포인트 지급
     if (isCompleted && !task.isCompleted) {
-      await awardPoints(session.user.id, 'TASK_COMPLETE')
-      await checkAchievements(session.user.id, 'TASKS')
+      await awardPoints(userId, 'TASK_COMPLETE')
+      await checkAchievements(userId, 'TASKS')
     }
 
     return NextResponse.json(updatedTask)
   } catch (error) {
     console.error('PATCH /api/tasks error:', error)
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
+    }
+
+    // URL 쿼리에서 id 가져오기 (모바일 앱 호환)
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
+
+    if (!id) {
+      return NextResponse.json({ error: "Task ID required" }, { status: 400 })
+    }
+
+    const task = await prisma.task.findFirst({
+      where: { id, userId }
+    })
+
+    if (!task) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 })
+    }
+
+    await prisma.task.delete({
+      where: { id }
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('DELETE /api/tasks error:', error)
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
   }
 }

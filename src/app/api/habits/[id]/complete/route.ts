@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getAuthUserId } from "@/lib/mobile-auth"
 import { prisma } from "@/lib/prisma"
 import { awardPoints, checkAchievements } from "@/lib/gamification"
 import { startOfDay } from "date-fns"
@@ -9,9 +9,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const { id } = await params
@@ -21,7 +21,7 @@ export async function POST(
     const habit = await prisma.habit.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        userId,
       }
     })
 
@@ -51,7 +51,7 @@ export async function POST(
       log = await prisma.habitLog.create({
         data: {
           habitId: id,
-          userId: session.user.id,
+          userId,
           date: habitDate,
           count: 1,
         }
@@ -87,15 +87,15 @@ export async function POST(
       })
 
       // 포인트 지급
-      await awardPoints(session.user.id, 'HABIT_COMPLETE')
+      await awardPoints(userId, 'HABIT_COMPLETE')
 
       // 스트릭 보너스
-      if (newStreak === 7) await awardPoints(session.user.id, 'HABIT_STREAK_7')
-      if (newStreak === 30) await awardPoints(session.user.id, 'HABIT_STREAK_30')
-      if (newStreak === 100) await awardPoints(session.user.id, 'HABIT_STREAK_100')
+      if (newStreak === 7) await awardPoints(userId, 'HABIT_STREAK_7')
+      if (newStreak === 30) await awardPoints(userId, 'HABIT_STREAK_30')
+      if (newStreak === 100) await awardPoints(userId, 'HABIT_STREAK_100')
 
       // 업적 체크
-      await checkAchievements(session.user.id, 'HABITS')
+      await checkAchievements(userId, 'HABITS')
     }
 
     return NextResponse.json(log)
