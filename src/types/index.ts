@@ -40,6 +40,7 @@ export interface Habit {
   totalCompletions: number;
   isActive: boolean;
   logs: HabitLog[];
+  completedDates?: string[]; // computed from logs
   createdAt: string;
 }
 
@@ -116,7 +117,7 @@ export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
 export type HabitFrequency = 'DAILY' | 'WEEKLY' | 'CUSTOM';
 
-export type GoalType = 'LIFE' | 'DECADE' | 'FIVE_YEAR' | 'YEARLY' | 'QUARTERLY' | 'MONTHLY' | 'WEEKLY' | 'DAILY';
+export type GoalType = 'LIFE' | 'LONG' | 'SHORT' | 'DECADE' | 'FIVE_YEAR' | 'YEARLY' | 'QUARTERLY' | 'MONTHLY' | 'WEEKLY' | 'DAILY';
 
 export type GoalStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'ON_HOLD' | 'ABANDONED';
 

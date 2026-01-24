@@ -33,7 +33,9 @@ export default function NotesScreen() {
 
   const fetchNotes = async () => {
     try {
-      const data = await api.getNotes();
+      const response = await api.getNotes();
+      // API가 { notes, pagination } 형식으로 응답할 수 있음
+      const data = Array.isArray(response) ? response : response.notes;
       setNotes(data || []);
     } catch (error) {
       console.error('Notes fetch error:', error);

@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
-import Constants from 'expo-constants';
 
-const API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://growthpad-b7ojapdtv-insu-shims-projects.vercel.app';
+// 프로덕션 URL 사용 (auth.ts와 동일)
+const API_URL = 'https://growthpad.vercel.app';
 
 interface FetchOptions extends RequestInit {
   body?: any;

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { User } from '../types';
+import { api } from '../lib/api';
 
 interface AuthState {
   user: User | null;
@@ -46,6 +47,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // JWT 토큰 안전하게 저장
         await SecureStore.setItemAsync(TOKEN_KEY, data.token);
 
+        // API 클라이언트에도 토큰 동기화
+        await api.setToken(data.token);
+
         // 사용자 정보 설정
         set({ user: data.user, isAuthenticated: true });
         return true;
@@ -87,6 +91,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: async () => {
     // 저장된 토큰 삭제
     await SecureStore.deleteItemAsync(TOKEN_KEY);
+
+    // API 클라이언트 토큰도 삭제
+    await api.clearToken();
+
     set({ user: null, isAuthenticated: false });
   },
 

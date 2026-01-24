@@ -32,7 +32,12 @@ export default function HabitsScreen() {
   const fetchHabits = async () => {
     try {
       const data = await api.getHabits();
-      setHabits(data || []);
+      // logs에서 completedDates 계산
+      const habitsWithDates = (data || []).map((habit: Habit) => ({
+        ...habit,
+        completedDates: habit.logs?.map((log) => log.date.split('T')[0]) || [],
+      }));
+      setHabits(habitsWithDates);
     } catch (error) {
       console.error('Habits fetch error:', error);
     }
