@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getAuthUserId } from "@/lib/mobile-auth"
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 
@@ -17,9 +17,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const { id: routineId } = await params
@@ -29,7 +29,7 @@ export async function POST(
     const routine = await prisma.routine.findFirst({
       where: {
         id: routineId,
-        userId: session.user.id,
+        userId,
       },
       include: {
         items: {
@@ -59,7 +59,7 @@ export async function POST(
         log = await prisma.routineLog.create({
           data: {
             routineId,
-            userId: session.user.id,
+            userId,
             date: today,
             startedAt: new Date(),
             completedItems: [],
@@ -95,7 +95,7 @@ export async function POST(
       log = await prisma.routineLog.create({
         data: {
           routineId,
-          userId: session.user.id,
+          userId,
           date: today,
           startedAt: new Date(),
           completedItems: [itemIndex],
@@ -142,9 +142,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const { id: routineId } = await params
@@ -155,7 +155,7 @@ export async function GET(
     const log = await prisma.routineLog.findFirst({
       where: {
         routineId,
-        userId: session.user.id,
+        userId,
         date: today,
       },
     })

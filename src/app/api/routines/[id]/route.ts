@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getAuthUserId } from "@/lib/mobile-auth"
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 import { RoutineType } from "@prisma/client"
@@ -19,9 +19,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const { id } = await params
@@ -29,7 +29,7 @@ export async function GET(
     const routine = await prisma.routine.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        userId,
       },
       include: {
         items: {
@@ -59,9 +59,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const { id } = await params
@@ -72,7 +72,7 @@ export async function PATCH(
     const existingRoutine = await prisma.routine.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        userId,
       },
     })
 
@@ -113,9 +113,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const { id } = await params
@@ -124,7 +124,7 @@ export async function DELETE(
     const existingRoutine = await prisma.routine.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        userId,
       },
     })
 

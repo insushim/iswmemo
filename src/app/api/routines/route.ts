@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getAuthUserId } from "@/lib/mobile-auth"
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 import { RoutineType } from "@prisma/client"
@@ -18,9 +18,9 @@ const createRoutineSchema = z.object({
 // 루틴 목록 조회
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const today = new Date()
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
     const routines = await prisma.routine.findMany({
       where: {
-        userId: session.user.id,
+        userId,
         isActive: true,
       },
       include: {
@@ -68,9 +68,9 @@ export async function GET(req: NextRequest) {
 // 루틴 생성
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
     }
 
     const body = await req.json()
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     // 같은 타입의 루틴 개수로 순서 결정
     const existingCount = await prisma.routine.count({
       where: {
-        userId: session.user.id,
+        userId,
         type: data.type as RoutineType,
       },
     })
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
         type: data.type as RoutineType,
         startTime: data.startTime,
         order: existingCount,
-        userId: session.user.id,
+        userId,
         items: data.items && data.items.length > 0 ? {
           create: data.items.map((item, index) => ({
             name: item.name,
