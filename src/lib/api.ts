@@ -206,13 +206,40 @@ class ApiClient {
 
   // 루틴
   async getRoutines() {
-    return this.fetch<any[]>('/api/routines');
+    return this.fetch<any>('/api/routines');
   }
 
   async createRoutine(data: any) {
     return this.fetch('/api/routines', {
       method: 'POST',
       body: data,
+    });
+  }
+
+  async updateRoutine(id: string, data: any) {
+    return this.fetch(`/api/routines/${id}`, {
+      method: 'PATCH',
+      body: data,
+    });
+  }
+
+  async deleteRoutine(id: string) {
+    return this.fetch(`/api/routines/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async toggleRoutineItem(routineId: string, itemIndex: number) {
+    return this.fetch(`/api/routines/${routineId}/log`, {
+      method: 'POST',
+      body: { itemIndex },
+    });
+  }
+
+  async startRoutine(routineId: string) {
+    return this.fetch(`/api/routines/${routineId}/log`, {
+      method: 'POST',
+      body: { action: 'start' },
     });
   }
 

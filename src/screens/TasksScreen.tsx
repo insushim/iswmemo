@@ -107,12 +107,25 @@ export default function TasksScreen() {
     URGENT: '긴급',
   };
 
+  const cardStyle = {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 4,
+    elevation: 3,
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* 헤더 */}
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.foreground }]}>할 일</Text>
         <TouchableOpacity
+          activeOpacity={0.7}
+          delayPressIn={0}
           style={[styles.addButton, { backgroundColor: colors.primary }]}
           onPress={() => setShowModal(true)}
         >
@@ -125,10 +138,14 @@ export default function TasksScreen() {
         {(['active', 'all', 'completed'] as const).map((f) => (
           <TouchableOpacity
             key={f}
+            activeOpacity={0.7}
+            delayPressIn={0}
             style={[
               styles.filterButton,
               {
-                backgroundColor: filter === f ? colors.primary : colors.secondary,
+                backgroundColor: filter === f ? colors.primary : colors.card,
+                borderWidth: 1,
+                borderColor: filter === f ? colors.primary : colors.cardBorder,
               },
             ]}
             onPress={() => setFilter(f)}
@@ -154,7 +171,7 @@ export default function TasksScreen() {
         contentContainerStyle={styles.listContainer}
       >
         {filteredTasks.length === 0 ? (
-          <View style={styles.emptyContainer}>
+          <View style={[styles.emptyContainer, cardStyle]}>
             <CheckCircle2 size={48} color={colors.mutedForeground} />
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
               {filter === 'completed' ? '완료된 할일이 없습니다' : '할일이 없습니다'}
@@ -164,7 +181,13 @@ export default function TasksScreen() {
           filteredTasks.map((task) => (
             <TouchableOpacity
               key={task.id}
-              style={[styles.taskCard, { backgroundColor: colors.card }]}
+              activeOpacity={0.7}
+              delayPressIn={0}
+              style={[
+                styles.taskCard,
+                cardStyle,
+                { borderLeftWidth: 3, borderLeftColor: getPriorityColor(task.priority) }
+              ]}
               onPress={() => handleToggleTask(task)}
               onLongPress={() => handleDeleteTask(task.id)}
             >
@@ -236,7 +259,7 @@ export default function TasksScreen() {
               <Text style={[styles.modalTitle, { color: colors.foreground }]}>
                 새 할일 추가
               </Text>
-              <TouchableOpacity onPress={() => setShowModal(false)}>
+              <TouchableOpacity activeOpacity={0.7} delayPressIn={0} onPress={() => setShowModal(false)}>
                 <X size={24} color={colors.foreground} />
               </TouchableOpacity>
             </View>
@@ -261,6 +284,8 @@ export default function TasksScreen() {
               {priorities.map((p) => (
                 <TouchableOpacity
                   key={p}
+                  activeOpacity={0.7}
+                  delayPressIn={0}
                   style={[
                     styles.priorityOption,
                     {
@@ -268,6 +293,8 @@ export default function TasksScreen() {
                         newTaskPriority === p
                           ? getPriorityColor(p)
                           : colors.secondary,
+                      borderWidth: 1,
+                      borderColor: newTaskPriority === p ? getPriorityColor(p) : colors.border,
                     },
                   ]}
                   onPress={() => setNewTaskPriority(p)}
@@ -285,6 +312,8 @@ export default function TasksScreen() {
             </View>
 
             <TouchableOpacity
+              activeOpacity={0.7}
+              delayPressIn={0}
               style={[styles.submitButton, { backgroundColor: colors.primary }]}
               onPress={handleAddTask}
             >
@@ -342,6 +371,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 60,
     gap: 12,
+    borderRadius: 12,
   },
   emptyText: {
     fontSize: 15,

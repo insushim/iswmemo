@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,14 +20,62 @@ import {
   LogOut,
   ChevronRight,
   Star,
+  Home,
+  CheckSquare,
+  Repeat,
+  Target,
+  Clock,
+  StickyNote,
+  Smartphone,
 } from 'lucide-react-native';
 import { useTheme, levelSystem } from '../lib/theme';
 import { useAuthStore } from '../store/auth';
+import { useSettingsStore } from '../store/settings';
+import { lockScreenService } from '../lib/lockscreen';
+
+const START_SCREEN_OPTIONS = [
+  { key: 'Dashboard', label: '홈', icon: Home, color: '#6366f1' },
+  { key: 'Tasks', label: '할일', icon: CheckSquare, color: '#3b82f6' },
+  { key: 'Habits', label: '습관', icon: Repeat, color: '#22c55e' },
+  { key: 'Goals', label: '목표', icon: Target, color: '#8b5cf6' },
+  { key: 'Routines', label: '루틴', icon: Clock, color: '#f59e0b' },
+  { key: 'Notes', label: '메모', icon: StickyNote, color: '#ec4899' },
+] as const;
 
 export default function SettingsScreen() {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation<any>();
   const { user, logout } = useAuthStore();
+  const { startScreen, setStartScreen } = useSettingsStore();
+  const [lockscreenEnabled, setLockscreenEnabled] = useState(false);
+
+  useEffect(() => {
+    checkLockscreenStatus();
+  }, []);
+
+  const checkLockscreenStatus = async () => {
+    const isRunning = await lockScreenService.isServiceRunning();
+    setLockscreenEnabled(isRunning);
+  };
+
+  const toggleLockscreen = async (value: boolean) => {
+    if (value) {
+      const success = await lockScreenService.startService(
+        '오늘의 할 일',
+        '탭하여 할 일을 확인하세요'
+      );
+      if (success) {
+        setLockscreenEnabled(true);
+        Alert.alert('알림', '잠금화면에 할 일이 표시됩니다');
+      } else {
+        Alert.alert('오류', '잠금화면 표시를 활성화할 수 없습니다. 알림 권한을 확인해주세요.');
+      }
+    } else {
+      await lockScreenService.stopService();
+      setLockscreenEnabled(false);
+      Alert.alert('알림', '잠금화면 표시가 해제되었습니다');
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert('로그아웃', '로그아웃 하시겠습니까?', [
@@ -40,9 +88,24 @@ export default function SettingsScreen() {
     ]);
   };
 
+  const handleStartScreenChange = () => {
+    const options = START_SCREEN_OPTIONS.map((opt) => ({
+      text: opt.label + (startScreen === opt.key ? ' (현재)' : ''),
+      onPress: () => setStartScreen(opt.key),
+    }));
+
+    Alert.alert(
+      '시작 화면 선택',
+      '앱을 열 때 먼저 보여줄 화면을 선택하세요.',
+      [...options, { text: '취소', style: 'cancel' }]
+    );
+  };
+
   const level = user ? levelSystem.getLevel(user.experience || 0) : 1;
   const levelTitle = levelSystem.getLevelTitle(level);
   const levelColor = levelSystem.getLevelColor(level);
+
+  const currentStartScreen = START_SCREEN_OPTIONS.find((o) => o.key === startScreen);
 
   const SettingItem = ({
     icon: Icon,
@@ -135,6 +198,26 @@ export default function SettingsScreen() {
           <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
             앱 설정
           </Text>
+          <SettingItem
+            icon={Home}
+            iconColor="#22c55e"
+            title="시작 화면"
+            subtitle={`앱 실행 시 ${currentStartScreen?.label || '홈'}부터 표시`}
+            onPress={handleStartScreenChange}
+          />
+          <SettingItem
+            icon={Smartphone}
+            iconColor="#3b82f6"
+            title="잠금화면 표시"
+            subtitle={lockscreenEnabled ? '켜짐 - 잠금화면에 할 일 표시' : '꺼짐'}
+            rightElement={
+              <Switch
+                value={lockscreenEnabled}
+                onValueChange={toggleLockscreen}
+                trackColor={{ false: colors.secondary, true: colors.primary }}
+              />
+            }
+          />
           <SettingItem
             icon={Bell}
             iconColor="#f59e0b"

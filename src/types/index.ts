@@ -94,6 +94,8 @@ export interface Routine {
   endTime: string | null;
   isActive: boolean;
   items: RoutineItem[];
+  todayLog?: RoutineLog | null;
+  completedItemsToday?: number[];
   createdAt: string;
 }
 
