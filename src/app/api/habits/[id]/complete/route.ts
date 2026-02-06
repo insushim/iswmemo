@@ -104,3 +104,55 @@ export async function POST(
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { userId, error } = await getAuthUserId(req)
+    if (!userId) {
+      return NextResponse.json({ error: error || "Unauthorized" }, { status: 401 })
+    }
+
+    const { id } = await params
+    const { date } = await req.json()
+    const habitDate = startOfDay(new Date(date))
+
+    const habit = await prisma.habit.findFirst({
+      where: { id, userId }
+    })
+
+    if (!habit) {
+      return NextResponse.json({ error: "Habit not found" }, { status: 404 })
+    }
+
+    const existingLog = await prisma.habitLog.findUnique({
+      where: {
+        habitId_date: {
+          habitId: id,
+          date: habitDate,
+        }
+      }
+    })
+
+    if (existingLog) {
+      await prisma.habitLog.delete({
+        where: { id: existingLog.id }
+      })
+
+      await prisma.habit.update({
+        where: { id },
+        data: {
+          currentStreak: Math.max(0, habit.currentStreak - 1),
+          totalCompletions: Math.max(0, habit.totalCompletions - 1),
+        }
+      })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('DELETE /api/habits/[id]/complete error:', error)
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+  }
+}
