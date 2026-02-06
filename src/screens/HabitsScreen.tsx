@@ -1,34 +1,24 @@
 import React, { useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  RefreshControl,
-  TextInput,
-  Modal,
-  Alert,
-} from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, TextInput, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { Plus, Repeat, X, Check, Flame, Trash2 } from 'lucide-react-native';
+import { Plus, X, Check, Flame } from 'lucide-react-native';
 import { format } from 'date-fns';
 import { useTheme } from '../lib/theme';
 import { api } from '../lib/api';
 import { Habit } from '../types';
+import PinnedGoals from '../components/PinnedGoals';
 
 const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-const ICONS = ['💪', '📚', '🏃', '💧', '🧘', '✍️', '🎯', '💤'];
 
 export default function HabitsScreen() {
   const { colors } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [newHabitName, setNewHabitName] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
-  const [selectedIcon, setSelectedIcon] = useState(ICONS[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchHabits = async () => {
@@ -44,308 +34,160 @@ export default function HabitsScreen() {
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchHabits();
-    }, [])
-  );
+  useFocusEffect(useCallback(() => { fetchHabits(); }, []));
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchHabits();
-    setRefreshing(false);
+  const onRefresh = async () => { setRefreshing(true); await fetchHabits(); setRefreshing(false); };
+
+  const openAddModal = () => {
+    setEditingHabit(null);
+    setNewHabitName('');
+    setSelectedColor(COLORS[0]);
+    setShowModal(true);
   };
 
-  const handleAddHabit = async () => {
-    if (!newHabitName.trim()) {
-      Alert.alert('오류', '습관 이름을 입력해주세요');
-      return;
-    }
+  const openEditModal = (habit: Habit) => {
+    setEditingHabit(habit);
+    setNewHabitName(habit.name);
+    setSelectedColor(habit.color || COLORS[0]);
+    setShowModal(true);
+  };
 
+  const handleSubmit = async () => {
+    if (!newHabitName.trim()) { Alert.alert('오류', '습관 이름을 입력해주세요'); return; }
     if (isSubmitting) return;
     setIsSubmitting(true);
-
     try {
-      await api.createHabit({
-        name: newHabitName.trim(),
-        color: selectedColor,
-        icon: selectedIcon,
-        frequency: 'DAILY',
-      });
-      setNewHabitName('');
-      setSelectedColor(COLORS[0]);
-      setSelectedIcon(ICONS[0]);
+      if (editingHabit) {
+        await api.updateHabit(editingHabit.id, { name: newHabitName.trim(), color: selectedColor });
+      } else {
+        await api.createHabit({ name: newHabitName.trim(), color: selectedColor, frequency: 'DAILY' });
+      }
       setShowModal(false);
       await fetchHabits();
     } catch (error: any) {
-      console.error('Create habit error:', error);
-      Alert.alert('오류', error?.message || '습관 추가에 실패했습니다');
-    } finally {
-      setIsSubmitting(false);
-    }
+      Alert.alert('오류', error?.message || '저장에 실패했습니다');
+    } finally { setIsSubmitting(false); }
   };
 
   const handleCompleteHabit = async (habit: Habit) => {
     const today = format(new Date(), 'yyyy-MM-dd');
     const isCompletedToday = habit.completedDates?.includes(today);
-
+    // 즉시 UI 업데이트 (Optimistic Update)
+    const prevHabits = [...habits];
+    setHabits(habits.map(h => {
+      if (h.id !== habit.id) return h;
+      const newDates = isCompletedToday
+        ? (h.completedDates || []).filter(d => d !== today)
+        : [...(h.completedDates || []), today];
+      return { ...h, completedDates: newDates, currentStreak: isCompletedToday ? Math.max(0, (h.currentStreak || 0) - 1) : (h.currentStreak || 0) + 1 };
+    }));
     try {
-      if (isCompletedToday) {
-        await api.uncompleteHabit(habit.id, today);
-      } else {
-        await api.completeHabit(habit.id, today);
-      }
-      await fetchHabits();
+      if (isCompletedToday) { await api.uncompleteHabit(habit.id, today); }
+      else { await api.completeHabit(habit.id, today); }
     } catch (error: any) {
-      console.error('Complete habit error:', error);
+      setHabits(prevHabits); // 실패 시 원복
       Alert.alert('오류', error?.message || '습관 업데이트에 실패했습니다');
     }
   };
 
-  const handleDeleteHabit = async (habitId: string, habitName: string) => {
-    Alert.alert('삭제', `"${habitName}"을(를) 삭제하시겠습니까?`, [
+  const handleLongPress = (habit: Habit) => {
+    Alert.alert(habit.name, '어떤 작업을 하시겠습니까?', [
+      { text: '수정', onPress: () => openEditModal(habit) },
+      { text: '삭제', style: 'destructive', onPress: () => {
+        Alert.alert('삭제', `"${habit.name}"을(를) 삭제하시겠습니까?`, [
+          { text: '취소', style: 'cancel' },
+          { text: '삭제', style: 'destructive', onPress: async () => {
+            try { await api.deleteHabit(habit.id); await fetchHabits(); }
+            catch (error: any) { Alert.alert('오류', error?.message || '삭제에 실패했습니다'); }
+          }},
+        ]);
+      }},
       { text: '취소', style: 'cancel' },
-      {
-        text: '삭제',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.deleteHabit(habitId);
-            await fetchHabits();
-          } catch (error: any) {
-            console.error('Delete habit error:', error);
-            Alert.alert('오류', error?.message || '삭제에 실패했습니다');
-          }
-        },
-      },
     ]);
   };
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const completedCount = habits.filter((h) => h.completedDates?.includes(today)).length;
-  const maxStreak = Math.max(...habits.map((h) => h.currentStreak || 0), 0);
-
-  const cardStyle = {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 4,
-    elevation: 3,
-  };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* 헤더 */}
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.foreground }]}>습관</Text>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          delayPressIn={0}
-          style={[styles.addButton, { backgroundColor: colors.primary }]}
-          onPress={() => setShowModal(true)}
-        >
-          <Plus size={20} color="#fff" />
+        <View>
+          <Text style={[styles.title, { color: colors.foreground }]}>습관</Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+            오늘 {completedCount}/{habits.length} 완료
+          </Text>
+        </View>
+        <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={openAddModal}>
+          <Plus size={18} color="#fff" />
         </TouchableOpacity>
       </View>
 
-      {/* 오늘 현황 */}
-      <View style={[styles.statsCard, cardStyle, { borderLeftWidth: 3, borderLeftColor: '#22c55e' }]}>
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Repeat size={20} color={colors.primary} />
-            <Text style={[styles.statValue, { color: colors.foreground }]}>
-              {completedCount}/{habits.length}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              오늘 완료
-            </Text>
-          </View>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <View style={styles.statItem}>
-            <Flame size={20} color="#f97316" />
-            <Text style={[styles.statValue, { color: colors.foreground }]}>
-              {maxStreak}일
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              최고 연속
-            </Text>
-          </View>
-        </View>
-      </View>
+      <PinnedGoals />
 
-      {/* 습관 목록 */}
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        contentContainerStyle={styles.listContainer}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={styles.list}
       >
         {habits.length === 0 ? (
-          <View style={[styles.emptyContainer, cardStyle]}>
-            <Repeat size={48} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              습관을 추가해보세요
-            </Text>
-            <Text style={[styles.emptySubText, { color: colors.mutedForeground }]}>
-              매일 실천하고 싶은 습관을 등록하세요
-            </Text>
+          <View style={[styles.empty, { backgroundColor: colors.card }]}>
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>습관을 추가해보세요</Text>
           </View>
         ) : (
           habits.map((habit) => {
-            const isCompletedToday = habit.completedDates?.includes(today);
+            const isDone = habit.completedDates?.includes(today);
             return (
               <TouchableOpacity
                 key={habit.id}
                 activeOpacity={0.7}
-                delayPressIn={0}
-                style={[
-                  styles.habitCard,
-                  cardStyle,
-                  { borderLeftWidth: 3, borderLeftColor: habit.color || '#22c55e' }
-                ]}
+                style={[styles.habitItem, { backgroundColor: colors.card, borderLeftColor: habit.color || '#6366f1', borderLeftWidth: 3 }]}
                 onPress={() => handleCompleteHabit(habit)}
-                onLongPress={() => handleDeleteHabit(habit.id, habit.name)}
+                onLongPress={() => handleLongPress(habit)}
               >
-                <View style={[styles.habitIcon, { backgroundColor: habit.color + '20' }]}>
-                  <Text style={styles.habitEmoji}>{habit.icon}</Text>
-                </View>
-                <View style={styles.habitContent}>
-                  <Text
-                    style={[
-                      styles.habitName,
-                      {
-                        color: isCompletedToday ? colors.mutedForeground : colors.foreground,
-                        textDecorationLine: isCompletedToday ? 'line-through' : 'none',
-                      },
-                    ]}
-                  >
-                    {habit.name}
-                  </Text>
-                  <View style={styles.habitMeta}>
-                    <Flame size={12} color="#f97316" />
-                    <Text style={[styles.streakText, { color: colors.mutedForeground }]}>
-                      {habit.currentStreak || 0}일 연속
-                    </Text>
+                <View style={styles.habitInfo}>
+                  <Text style={[styles.habitName, { color: isDone ? colors.mutedForeground : colors.foreground, textDecorationLine: isDone ? 'line-through' : 'none' }]}>{habit.name}</Text>
+                  <View style={styles.streakRow}>
+                    <Flame size={11} color="#f97316" />
+                    <Text style={[styles.streakText, { color: colors.mutedForeground }]}>{habit.currentStreak || 0}일</Text>
                   </View>
                 </View>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  delayPressIn={0}
-                  style={[
-                    styles.checkButton,
-                    {
-                      backgroundColor: isCompletedToday ? '#22c55e' : colors.secondary,
-                      borderColor: isCompletedToday ? '#22c55e' : colors.border,
-                    },
-                  ]}
-                  onPress={() => handleCompleteHabit(habit)}
-                >
-                  {isCompletedToday && <Check size={18} color="#fff" />}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  activeOpacity={0.6}
-                  delayPressIn={0}
-                  style={styles.deleteButton}
-                  onPress={() => handleDeleteHabit(habit.id, habit.name)}
-                >
-                  <Trash2 size={16} color={colors.mutedForeground} />
-                </TouchableOpacity>
+                <View style={[styles.checkCircle, { backgroundColor: isDone ? '#22c55e' : 'transparent', borderColor: isDone ? '#22c55e' : colors.border }]}>
+                  {isDone && <Check size={14} color="#fff" />}
+                </View>
               </TouchableOpacity>
             );
           })
         )}
+        <View style={{ height: 20 }} />
       </ScrollView>
 
-      {/* 추가 모달 */}
       <Modal visible={showModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-                새 습관 추가
-              </Text>
-              <TouchableOpacity activeOpacity={0.7} delayPressIn={0} onPress={() => setShowModal(false)}>
-                <X size={24} color={colors.foreground} />
-              </TouchableOpacity>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>{editingHabit ? '습관 수정' : '새 습관'}</Text>
+              <TouchableOpacity onPress={() => setShowModal(false)}><X size={22} color={colors.mutedForeground} /></TouchableOpacity>
             </View>
 
             <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: colors.secondary,
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                },
-              ]}
-              placeholder="습관 이름을 입력하세요"
+              style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+              placeholder="습관 이름"
               placeholderTextColor={colors.mutedForeground}
               value={newHabitName}
               onChangeText={setNewHabitName}
               autoFocus
             />
 
-            <Text style={[styles.label, { color: colors.foreground }]}>아이콘</Text>
-            <View style={styles.iconRow}>
-              {ICONS.map((icon) => (
-                <TouchableOpacity
-                  key={icon}
-                  activeOpacity={0.7}
-                  delayPressIn={0}
-                  style={[
-                    styles.iconOption,
-                    {
-                      backgroundColor:
-                        selectedIcon === icon ? colors.primary + '20' : colors.secondary,
-                      borderColor: selectedIcon === icon ? colors.primary : colors.border,
-                    },
-                  ]}
-                  onPress={() => setSelectedIcon(icon)}
-                >
-                  <Text style={styles.iconEmoji}>{icon}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
             <Text style={[styles.label, { color: colors.foreground }]}>색상</Text>
             <View style={styles.colorRow}>
               {COLORS.map((color) => (
-                <TouchableOpacity
-                  key={color}
-                  activeOpacity={0.7}
-                  delayPressIn={0}
-                  style={[
-                    styles.colorOption,
-                    {
-                      backgroundColor: color,
-                      borderWidth: selectedColor === color ? 3 : 0,
-                      borderColor: '#fff',
-                    },
-                  ]}
-                  onPress={() => setSelectedColor(color)}
-                />
+                <TouchableOpacity key={color} style={[styles.colorOption, { backgroundColor: color, borderWidth: selectedColor === color ? 2 : 0, borderColor: '#fff' }]} onPress={() => setSelectedColor(color)} />
               ))}
             </View>
 
-            <TouchableOpacity
-              activeOpacity={0.7}
-              delayPressIn={0}
-              style={[
-                styles.submitButton,
-                {
-                  backgroundColor: isSubmitting ? colors.mutedForeground : colors.primary,
-                },
-              ]}
-              onPress={handleAddHabit}
-              disabled={isSubmitting}
-            >
-              <Text style={styles.submitText}>
-                {isSubmitting ? '추가 중...' : '추가'}
-              </Text>
+            <TouchableOpacity style={[styles.submitBtn, { backgroundColor: isSubmitting ? colors.mutedForeground : colors.primary }]} onPress={handleSubmit} disabled={isSubmitting}>
+              <Text style={styles.submitText}>{isSubmitting ? '저장 중...' : editingHabit ? '수정' : '추가'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -355,185 +197,28 @@ export default function HabitsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statsCard: {
-    marginHorizontal: 20,
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 16,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-  },
-  statItem: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginTop: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-  },
-  divider: {
-    width: 1,
-    height: 40,
-  },
-  listContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    paddingVertical: 60,
-    gap: 12,
-    borderRadius: 12,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  emptySubText: {
-    fontSize: 13,
-  },
-  habitCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 10,
-    gap: 12,
-  },
-  habitIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  habitEmoji: {
-    fontSize: 20,
-  },
-  habitContent: {
-    flex: 1,
-  },
-  habitName: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  habitMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  streakText: {
-    fontSize: 12,
-  },
-  checkButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  deleteButton: {
-    padding: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  input: {
-    height: 50,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    borderWidth: 1,
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  iconRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
-  },
-  iconOption: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-  },
-  iconEmoji: {
-    fontSize: 20,
-  },
-  colorRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  colorOption: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-  },
-  submitButton: {
-    height: 50,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  submitText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  container: { flex: 1 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 },
+  title: { fontSize: 20, fontWeight: '700' },
+  subtitle: { fontSize: 12, marginTop: 2 },
+  addBtn: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  list: { paddingHorizontal: 12, paddingTop: 8 },
+  empty: { padding: 24, borderRadius: 10, alignItems: 'center' },
+  emptyText: { fontSize: 13 },
+  habitItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, marginBottom: 4, gap: 10 },
+  habitInfo: { flex: 1 },
+  habitName: { fontSize: 14, fontWeight: '500' },
+  streakRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
+  streakText: { fontSize: 11 },
+  checkCircle: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, justifyContent: 'center', alignItems: 'center' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 32 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  modalTitle: { fontSize: 16, fontWeight: '600' },
+  input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, marginBottom: 12 },
+  label: { fontSize: 13, fontWeight: '500', marginBottom: 6 },
+  colorRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  colorOption: { width: 30, height: 30, borderRadius: 15 },
+  submitBtn: { padding: 14, borderRadius: 10, alignItems: 'center' },
+  submitText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });

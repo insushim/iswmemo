@@ -14,14 +14,14 @@
       "channel": "preview",
       "android": {
         "buildType": "apk",
-        "credentialsSource": "remote",
-        "withoutCredentials": true
+        "credentialsSource": "local"
       }
     },
     "production": {
       "channel": "production",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "credentialsSource": "local"
       }
     }
   },

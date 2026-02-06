@@ -1,24 +1,21 @@
 import React, { useEffect, useRef } from 'react';
-import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Home, CheckSquare, Target, Repeat, StickyNote, Clock, ListTodo } from 'lucide-react-native';
-import { Platform } from 'react-native';
+import { ListTodo, Repeat, Target, Clock, MoreHorizontal } from 'lucide-react-native';
+import { Platform, View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../lib/theme';
 import { useAuthStore } from '../store/auth';
-import { useSettingsStore } from '../store/settings';
 
-// Screens
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
-import DashboardScreen from '../screens/DashboardScreen';
 import SimpleHomeScreen from '../screens/SimpleHomeScreen';
-import TasksScreen from '../screens/TasksScreen';
 import HabitsScreen from '../screens/HabitsScreen';
 import GoalsScreen from '../screens/GoalsScreen';
-import NotesScreen from '../screens/NotesScreen';
 import RoutinesScreen from '../screens/RoutinesScreen';
+import MoreScreen from '../screens/MoreScreen';
+import NotesScreen from '../screens/NotesScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 
 const Stack = createNativeStackNavigator();
@@ -27,37 +24,12 @@ const Tab = createBottomTabNavigator();
 function MainTabs() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { startScreen, loadSettings, isLoaded } = useSettingsStore();
-  const navigationRef = useRef<any>(null);
-  const hasNavigated = useRef(false);
 
-  // 설정 로드
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  // 시작 화면으로 이동 (기본값: Simple)
-  useEffect(() => {
-    if (isLoaded && !hasNavigated.current && navigationRef.current) {
-      hasNavigated.current = true;
-      // Simple 화면이 기본값
-      const screenToNavigate = startScreen === 'Routines' ? 'Routines' : 'Simple';
-      if (screenToNavigate !== 'Simple') {
-        setTimeout(() => {
-          navigationRef.current?.navigate(screenToNavigate);
-        }, 100);
-      }
-    }
-  }, [isLoaded, startScreen]);
-
-  // Android 네비게이션 바 겹침 방지를 위한 패딩 계산
-  const bottomPadding = Platform.OS === 'android' ? Math.max(insets.bottom, 8) : 8;
-  const tabBarHeight = 56 + bottomPadding;
+  const bottomPadding = Platform.OS === 'android' ? Math.max(insets.bottom, 4) : 4;
+  const tabBarHeight = 52 + bottomPadding;
 
   return (
     <Tab.Navigator
-      // @ts-ignore
-      ref={navigationRef}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
@@ -65,13 +37,17 @@ function MainTabs() {
         tabBarStyle: {
           backgroundColor: colors.card,
           borderTopColor: colors.border,
+          borderTopWidth: 0.5,
           paddingBottom: bottomPadding,
-          paddingTop: 6,
+          paddingTop: 4,
           height: tabBarHeight,
+          elevation: 0,
+          shadowOpacity: 0,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '600',
+          marginTop: -2,
         },
         tabBarIconStyle: {
           marginBottom: -2,
@@ -79,11 +55,27 @@ function MainTabs() {
       }}
     >
       <Tab.Screen
-        name="Simple"
+        name="Tasks"
         component={SimpleHomeScreen}
         options={{
           tabBarLabel: '할일',
-          tabBarIcon: ({ color, size }) => <ListTodo size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => <ListTodo size={20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="Habits"
+        component={HabitsScreen}
+        options={{
+          tabBarLabel: '습관',
+          tabBarIcon: ({ color, size }) => <Repeat size={20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="Goals"
+        component={GoalsScreen}
+        options={{
+          tabBarLabel: '목표',
+          tabBarIcon: ({ color, size }) => <Target size={20} color={color} />,
         }}
       />
       <Tab.Screen
@@ -91,7 +83,15 @@ function MainTabs() {
         component={RoutinesScreen}
         options={{
           tabBarLabel: '루틴',
-          tabBarIcon: ({ color, size }) => <Clock size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => <Clock size={20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="More"
+        component={MoreScreen}
+        options={{
+          tabBarLabel: '더보기',
+          tabBarIcon: ({ color, size }) => <MoreHorizontal size={20} color={color} />,
         }}
       />
     </Tab.Navigator>
@@ -103,7 +103,7 @@ export default function Navigation() {
   const { isAuthenticated, isLoading } = useAuthStore();
 
   if (isLoading) {
-    return null; // 또는 스플래시 스크린
+    return null;
   }
 
   return (
@@ -122,6 +122,7 @@ export default function Navigation() {
         ) : (
           <>
             <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen name="Notes" component={NotesScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
           </>
         )}

@@ -2,14 +2,15 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, TextInput, Alert, Modal, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { Check, Plus, Trash2, Settings, Bell, BellOff, Target, X, Calendar, Clock, Star, AlertCircle } from 'lucide-react-native';
+import { Check, Plus, Trash2, Bell, BellOff, X, Calendar, Clock, AlertCircle } from 'lucide-react-native';
 import { format, addDays, startOfWeek, addWeeks, isToday, isBefore, parseISO, isSameDay } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { useTheme } from '../lib/theme';
 import { useAuthStore } from '../store/auth';
 import { api } from '../lib/api';
 import { lockScreenService, formatTasksForNotification } from '../lib/lockscreen';
-import { Task, Goal } from '../types';
+import { Task } from '../types';
+import PinnedGoals from '../components/PinnedGoals';
 
 type TaskType = 'simple' | 'deadline';
 interface DateOption { label: string; value: Date; }
@@ -20,7 +21,6 @@ export default function SimpleHomeScreen({ navigation }: any) {
   const { user } = useAuthStore();
   const [refreshing, setRefreshing] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
   const [lockscreenEnabled, setLockscreenEnabled] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -45,20 +45,24 @@ export default function SimpleHomeScreen({ navigation }: any) {
 
   const fetchData = useCallback(async () => {
     try {
-      const [tasksRes, goalsRes] = await Promise.all([api.getTasks(), api.getGoals()]);
+      const tasksRes = await api.getTasks();
       setTasks(tasksRes || []);
-      setGoals(goalsRes || []);
     } catch (e) { console.error(e); }
   }, []);
 
-  const checkLockscreenStatus = useCallback(async () => {
+  const checkAndStartLockscreen = useCallback(async () => {
     try {
-      const enabled = await lockScreenService.isServiceRunning();
-      setLockscreenEnabled(enabled);
+      const running = await lockScreenService.isServiceRunning();
+      setLockscreenEnabled(running);
+      // 이전에 활성화했었다면 자동으로 서비스 시작
+      if (!running) {
+        await lockScreenService.startService('오늘의 할일', '할일을 불러오는 중...');
+        setLockscreenEnabled(true);
+      }
     } catch (e) { console.error(e); }
   }, []);
 
-  useFocusEffect(useCallback(() => { fetchData(); checkLockscreenStatus(); }, [fetchData, checkLockscreenStatus]));
+  useFocusEffect(useCallback(() => { fetchData(); checkAndStartLockscreen(); }, [fetchData, checkAndStartLockscreen]));
 
   useEffect(() => {
     if (lockscreenEnabled && tasks.length > 0) {
@@ -89,34 +93,33 @@ export default function SimpleHomeScreen({ navigation }: any) {
       Keyboard.dismiss();
       fetchData();
     } catch (e) {
-      Alert.alert('오류', '할轫\�추가에 실패했습니다.');
+      Alert.alert('오류', '할일 추가에 실패했습니다.');
     }
   };
 
   const handleToggleTask = async (t: Task) => {
+    // 즉시 UI 업데이트 (Optimistic Update)
+    const prevTasks = [...tasks];
+    setTasks(tasks.map(task => task.id === t.id ? { ...task, isCompleted: !task.isCompleted } : task));
     try {
       await api.updateTask(t.id, { isCompleted: !t.isCompleted });
-      fetchData();
     } catch (e) {
+      setTasks(prevTasks); // 실패 시 원복
       Alert.alert('오류', '상태 변경 실패');
     }
   };
 
-  const handleDeleteTask = async (id: string) => {
-    Alert.alert('삭제', '이 할일을 삭제할까요?', [
+  const handleLongPress = (t: Task) => {
+    Alert.alert(t.title, '어떤 작업을 하시겠습니까?', [
+      { text: '삭제', style: 'destructive', onPress: () => {
+        Alert.alert('삭제', '이 할일을 삭제할까요?', [
+          { text: '취소', style: 'cancel' },
+          { text: '삭제', style: 'destructive', onPress: async () => {
+            try { await api.deleteTask(t.id); fetchData(); } catch (e) { Alert.alert('오류', '삭제 실패'); }
+          }},
+        ]);
+      }},
       { text: '취소', style: 'cancel' },
-      {
-        text: '삭제',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.deleteTask(id);
-            fetchData();
-          } catch (e) {
-            Alert.alert('오류', '삭제 실패');
-          }
-        },
-      },
     ]);
   };
 
@@ -151,131 +154,93 @@ export default function SimpleHomeScreen({ navigation }: any) {
     return { text: format(d, 'M/d (E)', { locale: ko }), isUrgent: false };
   };
 
-  const lifeGoal = goals.find(g => g.type === 'LIFE');
-  const subGoals = goals.filter(g => g.type !== 'LIFE').slice(0, 2);
   const incompleteTasks = tasks.filter(t => !t.isCompleted);
   const completedTasks = tasks.filter(t => t.isCompleted);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* 헤더 */}
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <View style={styles.headerLeft}>
-          <View style={[styles.appIcon, { backgroundColor: colors.primary }]}>
-            <Target size={20} color="#fff" />
-          </View>
-          <Text style={[styles.appName, { color: colors.foreground }]}>GrowthPad</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <Text style={[styles.dateText, { color: colors.mutedForeground }]}>
-            {format(today, 'M월 d일 (E)', { locale: ko })}
+        <View>
+          <Text style={[styles.dateText, { color: colors.foreground }]}>
+            {format(today, 'M월 d일 EEEE', { locale: ko })}
           </Text>
-          <TouchableOpacity style={styles.headerButton} onPress={toggleLockscreen}>
-            {lockscreenEnabled ? <Bell size={20} color={colors.primary} /> : <BellOff size={20} color={colors.mutedForeground} />}
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.headerButton} onPress={() => navigation.navigate('Settings')}>
-            <Settings size={20} color={colors.mutedForeground} />
-          </TouchableOpacity>
+          <Text style={[styles.countText, { color: colors.mutedForeground }]}>
+            {incompleteTasks.length > 0 ? `${incompleteTasks.length}개 남음` : '모두 완료!'}
+          </Text>
         </View>
+        <TouchableOpacity style={styles.headerBtn} onPress={toggleLockscreen}>
+          {lockscreenEnabled ? <Bell size={18} color={colors.primary} /> : <BellOff size={18} color={colors.mutedForeground} />}
+        </TouchableOpacity>
       </View>
 
+      <PinnedGoals />
+
       <ScrollView style={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-        {/* 목표 섹션 */}
-        {(lifeGoal || subGoals.length > 0) && (
-          <View style={[styles.goalsSection, { backgroundColor: colors.card }]}>
-            {lifeGoal && (
-              <View style={styles.lifeGoalContainer}>
-                <Star size={16} color={colors.primary} />
-                <Text style={[styles.lifeGoalText, { color: colors.foreground }]} numberOfLines={1}>{lifeGoal.title}</Text>
-              </View>
-            )}
-            {subGoals.map(g => (
-              <View key={g.id} style={styles.subGoalContainer}>
-                <Target size={14} color={colors.mutedForeground} />
-                <Text style={[styles.subGoalText, { color: colors.mutedForeground }]} numberOfLines={1}>{g.title}</Text>
-              </View>
-            ))}
+        {incompleteTasks.length === 0 ? (
+          <View style={[styles.emptyState, { backgroundColor: colors.card }]}>
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>할일이 없습니다</Text>
           </View>
+        ) : (
+          incompleteTasks.map(t => {
+            const di = getDueDateInfo(t);
+            const o = isOverdue(t);
+            return (
+              <TouchableOpacity
+                key={t.id}
+                activeOpacity={0.7}
+                style={[styles.taskItem, { backgroundColor: colors.card, borderLeftColor: o ? '#ef4444' : 'transparent', borderLeftWidth: o ? 3 : 0 }]}
+                onPress={() => handleToggleTask(t)}
+                onLongPress={() => handleLongPress(t)}
+              >
+                <View style={[styles.checkbox, { borderColor: o ? '#ef4444' : colors.border }]} />
+                <View style={styles.taskContent}>
+                  <Text style={[styles.taskTitle, { color: colors.foreground }]}>{t.title}</Text>
+                  {di && (
+                    <View style={styles.dueDateRow}>
+                      {o ? <AlertCircle size={11} color="#ef4444" /> : <Clock size={11} color={di.isUrgent ? colors.primary : colors.mutedForeground} />}
+                      <Text style={[styles.dueDateText, { color: o ? '#ef4444' : di.isUrgent ? colors.primary : colors.mutedForeground }]}>{di.text}</Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })
         )}
 
-        {/* 할일 목록 */}
-        <View style={styles.tasksSection}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            할일 {incompleteTasks.length > 0 ? `(${incompleteTasks.length})` : ''}
-          </Text>
-
-          {incompleteTasks.length === 0 ? (
-            <View style={[styles.emptyState, { backgroundColor: colors.card }]}>
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>할일이 없습니다</Text>
-            </View>
-          ) : (
-            incompleteTasks.map(t => {
-              const di = getDueDateInfo(t);
-              const o = isOverdue(t);
-              return (
-                <TouchableOpacity
-                  key={t.id}
-                  style={[styles.taskItem, { backgroundColor: colors.card }, o && styles.taskItemOverdue]}
-                  onPress={() => handleToggleTask(t)}
-                  onLongPress={() => handleDeleteTask(t.id)}
-                >
-                  <View style={[styles.checkbox, { borderColor: colors.border }]}>
-                    {t.isCompleted && <Check size={14} color={colors.primary} />}
-                  </View>
-                  <View style={styles.taskContent}>
-                    <Text style={[styles.taskTitle, { color: colors.foreground }]}>{t.title}</Text>
-                    {di && (
-                      <View style={styles.dueDateRow}>
-                        {o ? <AlertCircle size={12} color={colors.destructive} /> : <Clock size={12} color={di.isUrgent ? colors.primary : colors.mutedForeground} />}
-                        <Text style={[styles.dueDateText, { color: o ? colors.destructive : di.isUrgent ? colors.primary : colors.mutedForeground }]}>{di.text}</Text>
-                      </View>
-                    )}
-                  </View>
-                  <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteTask(t.id)}>
-                    <Trash2 size={16} color={colors.mutedForeground} />
-                  </TouchableOpacity>
-                </TouchableOpacity>
-              );
-            })
-          )}
-        </View>
-
-        {/* 요료된 할일 */}
         {completedTasks.length > 0 && (
-          <View style={styles.tasksSection}>
-            <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>웄렌됨 ({completedTasks.length})</Text>
+          <View style={styles.completedSection}>
+            <Text style={[styles.completedTitle, { color: colors.mutedForeground }]}>완료 ({completedTasks.length})</Text>
             {completedTasks.slice(0, 5).map(t => (
               <TouchableOpacity
                 key={t.id}
-                style={[styles.taskItem, styles.taskItemCompleted, { backgroundColor: colors.card }]}
+                activeOpacity={0.7}
+                style={[styles.taskItem, styles.taskDone, { backgroundColor: colors.card }]}
                 onPress={() => handleToggleTask(t)}
-                onLongPress={() => handleDeleteTask(t.id)}
+                onLongPress={() => handleLongPress(t)}
               >
-                <View style={[styles.checkbox, styles.checkboxCompleted, { borderColor: colors.primary, backgroundColor: colors.primary }]}>
-                  <Check size={14} color="#fff" />
+                <View style={[styles.checkbox, styles.checkboxDone, { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                  <Check size={12} color="#fff" />
                 </View>
-                <Text style={[styles.taskTitle, styles.taskTitleCompleted, { color: colors.mutedForeground }]}>{t.title}</Text>
+                <Text style={[styles.taskTitle, styles.taskTitleDone, { color: colors.mutedForeground }]}>{t.title}</Text>
               </TouchableOpacity>
             ))}
           </View>
         )}
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 80 }} />
       </ScrollView>
 
-      {/* FAB */}
       <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary }]} onPress={() => setShowAddModal(true)}>
-        <Plus size={28} color="#fff" />
+        <Plus size={24} color="#fff" />
       </TouchableOpacity>
 
-      {/*  할일 추가 모달 */}
       <Modal visible={showAddModal} animationType="slide" transparent onRequestClose={() => setShowAddModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>초 할일</Text>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>할일 추가</Text>
               <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                <X size={24} color={colors.mutedForeground} />
+                <X size={22} color={colors.mutedForeground} />
               </TouchableOpacity>
             </View>
 
@@ -288,45 +253,42 @@ export default function SimpleHomeScreen({ navigation }: any) {
               autoFocus
             />
 
-            {/* 할일 타입 선택 */}
             <View style={styles.typeSelector}>
               <TouchableOpacity
-                style={[styles.typeButton, { borderColor: colors.border }, taskType === 'simple' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                style={[styles.typeBtn, { borderColor: colors.border }, taskType === 'simple' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
                 onPress={() => setTaskType('simple')}
               >
-                <Text style={[styles.typeButtonText, { color: taskType === 'simple' ? '#fff' : colors.foreground }]}>단순 할일</Text>
+                <Text style={[styles.typeBtnText, { color: taskType === 'simple' ? '#fff' : colors.foreground }]}>단순</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.typeButton, { borderColor: colors.border }, taskType === 'deadline' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                style={[styles.typeBtn, { borderColor: colors.border }, taskType === 'deadline' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
                 onPress={() => setTaskType('deadline')}
               >
-                <Calendar size={16} color={taskType === 'deadline' ? '#fff' : colors.foreground} />
-                <Text style={[styles.typeButtonText, { color: taskType === 'deadline' ? '#fff' : colors.foreground }]}>:諼한 설정</Text>
+                <Calendar size={14} color={taskType === 'deadline' ? '#fff' : colors.foreground} />
+                <Text style={[styles.typeBtnText, { color: taskType === 'deadline' ? '#fff' : colors.foreground }]}>기한</Text>
               </TouchableOpacity>
             </View>
 
-            {/* �기한 설정 */}
             {taskType === 'deadline' && (
               <View style={styles.deadlineSection}>
-                <Text style={[styles.deadlineLabel, { color: colors.foreground }]}>횄자</Text>
+                <Text style={[styles.deadlineLabel, { color: colors.foreground }]}>날짜</Text>
                 <View style={styles.optionsRow}>
                   {dateOptions.map((o, i) => (
                     <TouchableOpacity
                       key={i}
-                      style={[styles.optionButton, { borderColor: colors.border }, isSameDay(selectedDate, o.value) && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                      style={[styles.optionBtn, { borderColor: colors.border }, isSameDay(selectedDate, o.value) && { backgroundColor: colors.primary, borderColor: colors.primary }]}
                       onPress={() => setSelectedDate(o.value)}
                     >
                       <Text style={[styles.optionText, { color: isSameDay(selectedDate, o.value) ? '#fff' : colors.foreground }]}>{o.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
-
-                <Text style={[styles.deadlineLabel, { color: colors.foreground, marginTop: 16 }]}>시간</Text>
+                <Text style={[styles.deadlineLabel, { color: colors.foreground, marginTop: 12 }]}>시간</Text>
                 <View style={styles.optionsRow}>
                   {timeOptions.map((o, i) => (
                     <TouchableOpacity
                       key={i}
-                      style={[styles.optionButton, { borderColor: colors.border }, selectedTime === o.value && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                      style={[styles.optionBtn, { borderColor: colors.border }, selectedTime === o.value && { backgroundColor: colors.primary, borderColor: colors.primary }]}
                       onPress={() => setSelectedTime(o.value)}
                     >
                       <Text style={[styles.optionText, { color: selectedTime === o.value ? '#fff' : colors.foreground }]}>{o.label}</Text>
@@ -336,8 +298,8 @@ export default function SimpleHomeScreen({ navigation }: any) {
               </View>
             )}
 
-            <TouchableOpacity style={[styles.addButton, { backgroundColor: colors.primary }]} onPress={handleAddTask}>
-              <Text style={styles.addButtonText}>추가</Text>
+            <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={handleAddTask}>
+              <Text style={styles.addBtnText}>추가</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -348,48 +310,38 @@ export default function SimpleHomeScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  appIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  appName: { fontSize: 20, fontWeight: '700' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dateText: { fontSize: 14, marginRight: 8 },
-  headerButton: { padding: 6 },
-  content: { flex: 1 },
-  goalsSection: { margin: 16, padding: 16, borderRadius: 12 },
-  lifeGoalContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  lifeGoalText: { fontSize: 16, fontWeight: '600', flex: 1 },
-  subGoalContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  subGoalText: { fontSize: 14, flex: 1 },
-  tasksSection: { paddingHorizontal: 16, marginBottom: 16 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 12 },
-  emptyState: { padding: 32, borderRadius: 12, alignItems: 'center' },
-  emptyText: { fontSize: 14 },
-  taskItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, marginBottom: 8 },
-  taskItemOverdue: { borderLeftWidth: 3, borderLeftColor: '#ef4444' },
-  taskItemCompleted: { opacity: 0.7 },
-  checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  checkboxCompleted: { borderWidth: 0 },
+  header: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 0.5, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dateText: { fontSize: 16, fontWeight: '700' },
+  countText: { fontSize: 12, marginTop: 2 },
+  headerBtn: { padding: 8 },
+  content: { flex: 1, paddingHorizontal: 12, paddingTop: 8 },
+  emptyState: { padding: 24, borderRadius: 10, alignItems: 'center', marginTop: 8 },
+  emptyText: { fontSize: 13 },
+  taskItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, marginBottom: 4 },
+  taskDone: { opacity: 0.6 },
+  checkbox: { width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, marginRight: 10, justifyContent: 'center', alignItems: 'center' },
+  checkboxDone: { borderWidth: 0 },
   taskContent: { flex: 1 },
-  taskTitle: { fontSize: 15, fontWeight: '500' },
-  taskTitleCompleted: { textDecorationLine: 'line-through', flex: 1 },
-  dueDateRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  dueDateText: { fontSize: 12 },
-  deleteButton: { padding: 8 },
-  fab: { position: 'absolute', right: 20, bottom: 24, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'flex-end' },
-  modalContent: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 18, fontWeight: '600' },
-  input: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 16, marginBottom: 16 },
-  typeSelector: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  typeButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1 },
-  typeButtonText: { fontSize: 14, fontWeight: '500' },
-  deadlineSection: { marginBottom: 16 },
-  deadlineLabel: { fontSize: 14, fontWeight: '500', marginBottom: 10 },
-  optionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  optionButton: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
-  optionText: { fontSize: 13, fontWeight: '500' },
-  addButton: { padding: 16, borderRadius: 12, alignItems: 'center' },
-  addButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  taskTitle: { fontSize: 14, fontWeight: '500' },
+  taskTitleDone: { textDecorationLine: 'line-through' },
+  dueDateRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
+  dueDateText: { fontSize: 11 },
+  completedSection: { marginTop: 12 },
+  completedTitle: { fontSize: 12, fontWeight: '600', marginBottom: 6, marginLeft: 4 },
+  fab: { position: 'absolute', right: 16, bottom: 16, width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 32 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  modalTitle: { fontSize: 16, fontWeight: '600' },
+  input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15, marginBottom: 12 },
+  typeSelector: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  typeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 8, borderWidth: 1 },
+  typeBtnText: { fontSize: 13, fontWeight: '500' },
+  deadlineSection: { marginBottom: 12 },
+  deadlineLabel: { fontSize: 13, fontWeight: '500', marginBottom: 8 },
+  optionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  optionBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, borderWidth: 1 },
+  optionText: { fontSize: 12, fontWeight: '500' },
+  addBtn: { padding: 14, borderRadius: 10, alignItems: 'center' },
+  addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });

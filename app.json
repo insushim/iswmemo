@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "GrowthPad",
+    "name": "할일",
     "slug": "growthpad-mobile",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "owner": "insushim",
     "orientation": "portrait",
     "updates": {
@@ -33,14 +33,13 @@
         "backgroundColor": "#6366f1"
       },
       "package": "com.growthpad.app",
-      "edgeToEdgeEnabled": true,
+      "edgeToEdgeEnabled": false,
       "permissions": [
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
         "android.permission.SCHEDULE_EXACT_ALARM",
-        "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.VIBRATE",
-        "android.permission.SCHEDULE_EXACT_ALARM"
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
