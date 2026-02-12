@@ -1,11 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { StickyNote, Settings, LogOut, User, Star, ChevronRight } from 'lucide-react-native';
+import { Target, Clock, StickyNote, Settings, LogOut, User, Star, ChevronRight } from 'lucide-react-native';
 import { useTheme, levelSystem } from '../lib/theme';
 import { useAuthStore } from '../store/auth';
-import { Alert } from 'react-native';
 
 export default function MoreScreen() {
   const { colors } = useTheme();
@@ -22,6 +21,13 @@ export default function MoreScreen() {
       { text: '로그아웃', style: 'destructive', onPress: logout },
     ]);
   };
+
+  const menuItems = [
+    { icon: Target, color: '#8b5cf6', label: '목표', screen: 'Goals' },
+    { icon: Clock, color: '#f59e0b', label: '루틴', screen: 'Routines' },
+    { icon: StickyNote, color: '#ec4899', label: '메모', screen: 'Notes' },
+    { icon: Settings, color: '#6366f1', label: '설정', screen: 'Settings' },
+  ];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -48,23 +54,19 @@ export default function MoreScreen() {
 
       {/* 메뉴 */}
       <View style={styles.menuSection}>
-        <TouchableOpacity
-          style={[styles.menuItem, { backgroundColor: colors.card }]}
-          onPress={() => navigation.navigate('Notes')}
-        >
-          <StickyNote size={18} color="#ec4899" />
-          <Text style={[styles.menuText, { color: colors.foreground }]}>메모</Text>
-          <ChevronRight size={16} color={colors.mutedForeground} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.menuItem, { backgroundColor: colors.card }]}
-          onPress={() => navigation.navigate('Settings')}
-        >
-          <Settings size={18} color="#6366f1" />
-          <Text style={[styles.menuText, { color: colors.foreground }]}>설정</Text>
-          <ChevronRight size={16} color={colors.mutedForeground} />
-        </TouchableOpacity>
+        {menuItems.map((item) => (
+          <TouchableOpacity
+            key={item.screen}
+            style={[styles.menuItem, { backgroundColor: colors.card }]}
+            onPress={() => navigation.navigate(item.screen)}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: item.color + '15' }]}>
+              <item.icon size={18} color={item.color} />
+            </View>
+            <Text style={[styles.menuText, { color: colors.foreground }]}>{item.label}</Text>
+            <ChevronRight size={16} color={colors.mutedForeground} />
+          </TouchableOpacity>
+        ))}
       </View>
 
       {/* 로그아웃 */}
@@ -73,7 +75,7 @@ export default function MoreScreen() {
         <Text style={styles.logoutText}>로그아웃</Text>
       </TouchableOpacity>
 
-      <Text style={[styles.version, { color: colors.mutedForeground }]}>GrowthPad v1.2.0</Text>
+      <Text style={[styles.version, { color: colors.mutedForeground }]}>GrowthPad v1.3.0</Text>
     </SafeAreaView>
   );
 }
@@ -91,8 +93,9 @@ const styles = StyleSheet.create({
   levelBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, gap: 3 },
   levelText: { fontSize: 10, fontWeight: '600', color: '#fff' },
   levelTitle: { fontSize: 11 },
-  menuSection: { marginHorizontal: 12, gap: 2 },
+  menuSection: { marginHorizontal: 12, gap: 4 },
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 10, gap: 10 },
+  menuIcon: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   menuText: { flex: 1, fontSize: 14, fontWeight: '500' },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 12, marginTop: 24, padding: 14, borderRadius: 10, gap: 8 },
   logoutText: { fontSize: 14, fontWeight: '600', color: '#ef4444' },

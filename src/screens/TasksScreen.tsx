@@ -1,31 +1,38 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
-  RefreshControl,
   TextInput,
   Modal,
   Alert,
+  Animated,
 } from 'react-native';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, CheckCircle2, Circle, X, Calendar, Flag } from 'lucide-react-native';
+import { Plus, CheckCircle2, Circle, X, Calendar, Flag, Trash2 } from 'lucide-react-native';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme, getPriorityColor } from '../lib/theme';
+
+import { Swipeable } from 'react-native-gesture-handler';
+import VoiceInput from '../components/VoiceInput';
 import { api } from '../lib/api';
 import { Task, Priority } from '../types';
 
 export default function TasksScreen() {
-  const { colors } = useTheme();
+  const { colors, scaledFont, cardPadding, textAlign } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<Priority>('MEDIUM');
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('active');
+  const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const hasLoadedRef = useRef(false);
 
   const fetchTasks = async () => {
     try {
@@ -36,9 +43,7 @@ export default function TasksScreen() {
     }
   };
 
-  useEffect(() => {
-    fetchTasks();
-  }, []);
+  useFocusEffect(useCallback(() => { if (!hasLoadedRef.current) { hasLoadedRef.current = true; fetchTasks(); } }, []));
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -52,25 +57,39 @@ export default function TasksScreen() {
       return;
     }
 
+    if (editingTask) {
+      await handleSubmitEdit();
+      return;
+    }
+
+    const title = newTaskTitle.trim();
+    const priority = newTaskPriority;
+
+    const tempId = `temp-${Date.now()}`;
+    const tempTask = { id: tempId, title, priority, isCompleted: false, createdAt: new Date().toISOString() } as any;
+    setTasks(prev => [...prev, tempTask]);
+    setNewTaskTitle('');
+    setNewTaskPriority('MEDIUM');
+    setShowModal(false);
+
     try {
-      await api.createTask({
-        title: newTaskTitle,
-        priority: newTaskPriority,
-      });
-      setNewTaskTitle('');
-      setNewTaskPriority('MEDIUM');
-      setShowModal(false);
-      fetchTasks();
+      const created = await api.createTask({ title, priority }) as any;
+      if (created?.id) {
+        setTasks(prev => prev.map(t => t.id === tempId ? { ...t, id: created.id } : t));
+      }
     } catch (error) {
       Alert.alert('오류', '할일 추가에 실패했습니다');
+      fetchTasks();
     }
   };
 
   const handleToggleTask = async (task: Task) => {
+    const prevTasks = [...tasks];
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, isCompleted: !t.isCompleted } : t));
     try {
       await api.updateTask(task.id, { isCompleted: !task.isCompleted });
-      fetchTasks();
     } catch (error) {
+      setTasks(prevTasks);
       Alert.alert('오류', '할일 업데이트에 실패했습니다');
     }
   };
@@ -92,6 +111,43 @@ export default function TasksScreen() {
       },
     ]);
   };
+
+
+  const renderRightActions = (task: Task) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const scale = dragX.interpolate({ inputRange: [-80, 0], outputRange: [1, 0.5], extrapolate: 'clamp' });
+    return (
+      <Animated.View style={[styles.swipeDelete, { transform: [{ scale }] }]}>
+        <TouchableOpacity style={styles.swipeDeleteBtn} onPress={() => handleDeleteTask(task.id)}>
+          <Trash2 size={20} color="#fff" />
+          <Text style={styles.swipeDeleteText}>삭제</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  const openEditModal = (task: Task) => {
+    setEditingTask(task);
+    setNewTaskTitle(task.title);
+    setNewTaskPriority(task.priority || 'MEDIUM');
+    setShowModal(true);
+  };
+
+  const handleSubmitEdit = async () => {
+    if (!editingTask || !newTaskTitle.trim()) return;
+    const title = newTaskTitle.trim();
+    const editId = editingTask.id;
+    setTasks(prev => prev.map(t => t.id === editId ? { ...t, title, priority: newTaskPriority } : t));
+    setEditingTask(null);
+    setShowModal(false);
+    setNewTaskTitle('');
+    try {
+      await api.updateTask(editId, { title, priority: newTaskPriority });
+    } catch (error) {
+      Alert.alert('오류', '수정에 실패했습니다');
+      fetchTasks();
+    }
+  };
+
 
   const filteredTasks = tasks.filter((task) => {
     if (filter === 'active') return !task.isCompleted;
@@ -163,93 +219,95 @@ export default function TasksScreen() {
       </View>
 
       {/* 할일 목록 */}
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+      <DraggableFlatList
+        data={filteredTasks}
+        keyExtractor={(item) => item.id}
+        onDragEnd={({ data }: { data: Task[] }) => setTasks(data)}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         contentContainerStyle={styles.listContainer}
-      >
-        {filteredTasks.length === 0 ? (
+        ListHeaderComponent={
+          filteredTasks.length > 0 ? (
+            <View style={styles.hintRow}>
+              <Text style={[styles.hintText, { color: colors.mutedForeground }]}>꾹 눌러 드래그 | ← 밀어서 삭제</Text>
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={
           <View style={[styles.emptyContainer, cardStyle]}>
             <CheckCircle2 size={48} color={colors.mutedForeground} />
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
               {filter === 'completed' ? '완료된 할일이 없습니다' : '할일이 없습니다'}
             </Text>
           </View>
-        ) : (
-          filteredTasks.map((task) => (
-            <TouchableOpacity
-              key={task.id}
-              activeOpacity={0.7}
-              delayPressIn={0}
-              style={[
-                styles.taskCard,
-                cardStyle,
-                { borderLeftWidth: 3, borderLeftColor: getPriorityColor(task.priority) }
-              ]}
-              onPress={() => handleToggleTask(task)}
-              onLongPress={() => handleDeleteTask(task.id)}
+        }
+        renderItem={({ item: task, drag, isActive }: RenderItemParams<Task>) => (
+          <ScaleDecorator>
+            <Swipeable
+              ref={(ref) => { if (ref) swipeableRefs.current.set(task.id, ref); }}
+              renderRightActions={renderRightActions(task)}
+              overshootRight={false}
+              rightThreshold={40}
             >
-              <View
+              <TouchableOpacity
+                activeOpacity={0.7}
+                delayPressIn={0}
                 style={[
-                  styles.checkbox,
-                  {
-                    backgroundColor: task.isCompleted ? '#22c55e' : 'transparent',
-                    borderColor: task.isCompleted
-                      ? '#22c55e'
-                      : getPriorityColor(task.priority),
-                  },
+                  styles.taskCard,
+                  cardStyle,
+                  { borderLeftWidth: 3, borderLeftColor: getPriorityColor(task.priority), opacity: isActive ? 0.8 : 1 }
                 ]}
+                onPress={() => handleToggleTask(task)}
+                onLongPress={drag}
+                disabled={isActive}
               >
-                {task.isCompleted && <CheckCircle2 size={14} color="#fff" />}
-              </View>
-              <View style={styles.taskContent}>
-                <Text
+                <View
                   style={[
-                    styles.taskTitle,
+                    styles.checkbox,
                     {
-                      color: task.isCompleted
-                        ? colors.mutedForeground
-                        : colors.foreground,
-                      textDecorationLine: task.isCompleted ? 'line-through' : 'none',
+                      backgroundColor: task.isCompleted ? '#22c55e' : 'transparent',
+                      borderColor: task.isCompleted ? '#22c55e' : getPriorityColor(task.priority),
                     },
                   ]}
-                  numberOfLines={2}
                 >
-                  {task.title}
-                </Text>
-                <View style={styles.taskMeta}>
-                  <View
+                  {task.isCompleted && <CheckCircle2 size={14} color="#fff" />}
+                </View>
+                <View style={styles.taskContent}>
+                  <Text
                     style={[
-                      styles.priorityBadge,
-                      { backgroundColor: getPriorityColor(task.priority) + '20' },
+                      styles.taskTitle,
+                      {
+                        color: task.isCompleted ? colors.mutedForeground : colors.foreground,
+                        textDecorationLine: task.isCompleted ? 'line-through' : 'none',
+                        fontSize: scaledFont(15),
+                        textAlign,
+                      },
                     ]}
                   >
-                    <Flag size={10} color={getPriorityColor(task.priority)} />
-                    <Text
-                      style={[
-                        styles.priorityText,
-                        { color: getPriorityColor(task.priority) },
-                      ]}
-                    >
-                      {priorityLabels[task.priority]}
-                    </Text>
-                  </View>
-                  {task.dueDate && (
-                    <View style={styles.dueDateContainer}>
-                      <Calendar size={10} color={colors.mutedForeground} />
-                      <Text style={[styles.dueDate, { color: colors.mutedForeground }]}>
-                        {format(new Date(task.dueDate), 'M/d', { locale: ko })}
+                    {task.title}
+                  </Text>
+                  <View style={styles.taskMeta}>
+                    <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(task.priority) + '20' }]}>
+                      <Flag size={10} color={getPriorityColor(task.priority)} />
+                      <Text style={[styles.priorityText, { color: getPriorityColor(task.priority) }]}>
+                        {priorityLabels[task.priority]}
                       </Text>
                     </View>
-                  )}
+                    {task.dueDate && (
+                      <View style={styles.dueDateContainer}>
+                        <Calendar size={10} color={colors.mutedForeground} />
+                        <Text style={[styles.dueDate, { color: colors.mutedForeground }]}>
+                          {format(new Date(task.dueDate), 'M/d', { locale: ko })}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-              </View>
-            </TouchableOpacity>
-          ))
+              </TouchableOpacity>
+            </Swipeable>
+          </ScaleDecorator>
         )}
-      </ScrollView>
+      />
 
       {/* 추가 모달 */}
       <Modal visible={showModal} animationType="slide" transparent>
@@ -257,27 +315,37 @@ export default function TasksScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-                새 할일 추가
+                {editingTask ? '할일 수정' : '새 할일 추가'}
               </Text>
-              <TouchableOpacity activeOpacity={0.7} delayPressIn={0} onPress={() => setShowModal(false)}>
+              <TouchableOpacity activeOpacity={0.7} delayPressIn={0} onPress={() => { setShowModal(false); setEditingTask(null); }}>
                 <X size={24} color={colors.foreground} />
               </TouchableOpacity>
             </View>
 
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: colors.secondary,
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                },
-              ]}
-              placeholder="할일을 입력하세요"
-              placeholderTextColor={colors.mutedForeground}
-              value={newTaskTitle}
-              onChangeText={setNewTaskTitle}
-            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    flex: 1,
+                    backgroundColor: colors.secondary,
+                    color: colors.foreground,
+                    borderColor: colors.border,
+                    marginBottom: 0,
+                    minHeight: 50,
+                    maxHeight: 100,
+                    textAlignVertical: 'center',
+                  },
+                ]}
+                placeholder="할일을 입력하세요"
+                placeholderTextColor={colors.mutedForeground}
+                value={newTaskTitle}
+                onChangeText={setNewTaskTitle}
+                multiline
+                blurOnSubmit={false}
+              />
+              <VoiceInput color={colors.primary} onResult={(text) => setNewTaskTitle(prev => prev ? prev + ' ' + text : text)} />
+            </View>
 
             <Text style={[styles.label, { color: colors.foreground }]}>우선순위</Text>
             <View style={styles.priorityRow}>
@@ -317,7 +385,7 @@ export default function TasksScreen() {
               style={[styles.submitButton, { backgroundColor: colors.primary }]}
               onPress={handleAddTask}
             >
-              <Text style={styles.submitText}>추가</Text>
+              <Text style={styles.submitText}>{editingTask ? '수정' : '추가'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -485,4 +553,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  hintRow: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 4, marginBottom: 4 },
+  hintText: { fontSize: 10 },
+  swipeDelete: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 10 },
+  swipeDeleteBtn: { backgroundColor: '#ef4444', borderRadius: 12, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
+  swipeDeleteText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
 });

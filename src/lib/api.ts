@@ -1,28 +1,154 @@
 import * as SecureStore from 'expo-secure-store';
+import { API_URL } from './config';
+import type {
+  Task,
+  Habit,
+  Goal,
+  Note,
+  Routine,
+  RoutineLog,
+  Priority,
+  HabitFrequency,
+  GoalType,
+  GoalStatus,
+  RoutineType,
+} from '../types';
 
-// 프로덕션 URL 사용 (auth.ts와 동일)
-const API_URL = 'https://growthpad.vercel.app';
+// --- Request payload types ---
 
-interface FetchOptions extends RequestInit {
-  body?: any;
+interface CreateTaskPayload {
+  title: string;
+  description?: string | null;
+  priority?: Priority;
+  dueDate?: string | null;
+  dueTime?: string | null;
 }
+
+interface UpdateTaskPayload {
+  title?: string;
+  description?: string | null;
+  isCompleted?: boolean;
+  priority?: Priority;
+  dueDate?: string | null;
+  dueTime?: string | null;
+}
+
+interface CreateHabitPayload {
+  name: string;
+  description?: string | null;
+  icon?: string;
+  color?: string;
+  frequency?: HabitFrequency;
+  targetDays?: number[];
+  targetCount?: number;
+}
+
+interface UpdateHabitPayload {
+  name?: string;
+  description?: string | null;
+  icon?: string;
+  color?: string;
+  frequency?: HabitFrequency;
+  targetDays?: number[];
+  targetCount?: number;
+  isActive?: boolean;
+}
+
+interface CreateGoalPayload {
+  title: string;
+  description?: string | null;
+  type?: GoalType;
+  priority?: Priority;
+  status?: GoalStatus;
+  targetValue?: number | null;
+  unit?: string | null;
+  startDate?: string;
+  endDate?: string | null;
+  color?: string;
+  icon?: string;
+}
+
+interface UpdateGoalPayload {
+  title?: string;
+  description?: string | null;
+  type?: GoalType;
+  status?: GoalStatus;
+  priority?: Priority;
+  progress?: number;
+  targetValue?: number | null;
+  currentValue?: number;
+  unit?: string | null;
+  endDate?: string | null;
+  color?: string;
+  icon?: string;
+}
+
+interface CreateNotePayload {
+  title: string;
+  content?: string;
+  color?: string | null;
+}
+
+interface UpdateNotePayload {
+  title?: string;
+  content?: string;
+  isPinned?: boolean;
+  isArchived?: boolean;
+  isFavorite?: boolean;
+  color?: string | null;
+}
+
+interface CreateRoutinePayload {
+  name: string;
+  description?: string | null;
+  type?: RoutineType;
+  startTime?: string | null;
+  endTime?: string | null;
+  items?: { name: string; duration?: number | null; order?: number }[];
+}
+
+interface UpdateRoutinePayload {
+  name?: string;
+  description?: string | null;
+  type?: RoutineType;
+  startTime?: string | null;
+  endTime?: string | null;
+  isActive?: boolean;
+  items?: { name: string; duration?: number | null; order?: number }[];
+}
+
+interface RoutinesResponse {
+  routines: Routine[];
+}
+
+// --- Fetch options ---
+
+interface FetchOptions extends Omit<RequestInit, 'body'> {
+  body?: Record<string, unknown>;
+}
+
+// --- Timeout ---
+
+const REQUEST_TIMEOUT_MS = 30_000;
+
+// --- API Client ---
 
 class ApiClient {
   private token: string | null = null;
 
-  async setToken(token: string) {
+  async setToken(token: string): Promise<void> {
     this.token = token;
     await SecureStore.setItemAsync('auth_token', token);
   }
 
-  async getToken() {
+  async getToken(): Promise<string | null> {
     if (!this.token) {
       this.token = await SecureStore.getItemAsync('auth_token');
     }
     return this.token;
   }
 
-  async clearToken() {
+  async clearToken(): Promise<void> {
     this.token = null;
     await SecureStore.deleteItemAsync('auth_token');
   }
@@ -39,213 +165,187 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
     const config: RequestInit = {
       ...options,
       headers,
-      credentials: 'include',
+      signal: controller.signal,
     };
 
     if (options.body && typeof options.body === 'object') {
       config.body = JSON.stringify(options.body);
     }
 
-    const response = await fetch(`${API_URL}${endpoint}`, config);
+    try {
+      const response = await fetch(`${API_URL}${endpoint}`, config);
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `HTTP ${response.status}`);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error(error.error || `HTTP ${response.status}`);
+      }
+
+      return response.json();
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new Error(`Request to ${endpoint} timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    return response.json();
   }
 
-  // 인증
-  async login(email: string, password: string) {
-    // NextAuth credentials 로그인은 쿠키 기반이므로 별도 처리 필요
-    const response = await fetch(`${API_URL}/api/auth/callback/credentials`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-      credentials: 'include',
-    });
-    return response;
+  // --- Tasks ---
+
+  async getTasks(): Promise<Task[]> {
+    return this.fetch<Task[]>('/api/tasks');
   }
 
-  async register(name: string, email: string, password: string) {
-    return this.fetch('/api/auth/register', {
+  async createTask(data: CreateTaskPayload): Promise<Task> {
+    return this.fetch<Task>('/api/tasks', {
       method: 'POST',
-      body: { name, email, password },
+      body: data as unknown as Record<string, unknown>,
     });
   }
 
-  // 사용자
-  async getUser() {
-    return this.fetch<{ user: any }>('/api/user');
-  }
-
-  async updateUser(data: any) {
-    return this.fetch('/api/user', {
+  async updateTask(id: string, data: UpdateTaskPayload): Promise<Task> {
+    return this.fetch<Task>(`/api/tasks?id=${id}`, {
       method: 'PATCH',
-      body: data,
+      body: data as unknown as Record<string, unknown>,
     });
   }
 
-  // 할일
-  async getTasks() {
-    return this.fetch<any[]>('/api/tasks');
-  }
-
-  async createTask(data: any) {
-    return this.fetch('/api/tasks', {
-      method: 'POST',
-      body: data,
-    });
-  }
-
-  async updateTask(id: string, data: any) {
-    return this.fetch(`/api/tasks?id=${id}`, {
-      method: 'PATCH',
-      body: data,
-    });
-  }
-
-  async deleteTask(id: string) {
-    return this.fetch(`/api/tasks?id=${id}`, {
+  async deleteTask(id: string): Promise<void> {
+    return this.fetch<void>(`/api/tasks?id=${id}`, {
       method: 'DELETE',
     });
   }
 
-  // 습관
-  async getHabits() {
-    return this.fetch<any[]>('/api/habits');
+  // --- Habits ---
+
+  async getHabits(): Promise<Habit[]> {
+    return this.fetch<Habit[]>('/api/habits');
   }
 
-  async createHabit(data: any) {
-    return this.fetch('/api/habits', {
+  async createHabit(data: CreateHabitPayload): Promise<Habit> {
+    return this.fetch<Habit>('/api/habits', {
       method: 'POST',
-      body: data,
+      body: data as unknown as Record<string, unknown>,
     });
   }
 
-  async completeHabit(id: string, date: string) {
-    return this.fetch(`/api/habits/${id}/complete`, {
+  async completeHabit(id: string, date: string): Promise<Habit> {
+    return this.fetch<Habit>(`/api/habits/${id}/complete`, {
       method: 'POST',
       body: { date },
     });
   }
 
-  async uncompleteHabit(id: string, date: string) {
-    return this.fetch(`/api/habits/${id}/complete`, {
+  async uncompleteHabit(id: string, date: string): Promise<Habit> {
+    return this.fetch<Habit>(`/api/habits/${id}/complete`, {
       method: 'DELETE',
       body: { date },
     });
   }
 
-  async updateHabit(id: string, data: any) {
-    return this.fetch(`/api/habits/${id}`, {
+  async updateHabit(id: string, data: UpdateHabitPayload): Promise<Habit> {
+    return this.fetch<Habit>(`/api/habits/${id}`, {
       method: 'PATCH',
-      body: data,
+      body: data as unknown as Record<string, unknown>,
     });
   }
 
-  async deleteHabit(id: string) {
-    return this.fetch(`/api/habits/${id}`, {
+  async deleteHabit(id: string): Promise<void> {
+    return this.fetch<void>(`/api/habits/${id}`, {
       method: 'DELETE',
     });
   }
 
-  // 목표
-  async getGoals() {
-    return this.fetch<any[]>('/api/goals');
+  // --- Goals ---
+
+  async getGoals(): Promise<Goal[]> {
+    return this.fetch<Goal[]>('/api/goals');
   }
 
-  async createGoal(data: any) {
-    return this.fetch('/api/goals', {
+  async createGoal(data: CreateGoalPayload): Promise<Goal> {
+    return this.fetch<Goal>('/api/goals', {
       method: 'POST',
-      body: data,
+      body: data as unknown as Record<string, unknown>,
     });
   }
 
-  async updateGoal(id: string, data: any) {
-    return this.fetch(`/api/goals/${id}`, {
+  async updateGoal(id: string, data: UpdateGoalPayload): Promise<Goal> {
+    return this.fetch<Goal>(`/api/goals/${id}`, {
       method: 'PATCH',
-      body: data,
+      body: data as unknown as Record<string, unknown>,
     });
   }
 
-  async deleteGoal(id: string) {
-    return this.fetch(`/api/goals/${id}`, {
+  async deleteGoal(id: string): Promise<void> {
+    return this.fetch<void>(`/api/goals/${id}`, {
       method: 'DELETE',
     });
   }
 
-  // 메모
-  async getNotes() {
-    return this.fetch<any[]>('/api/notes');
+  // --- Notes ---
+
+  async getNotes(): Promise<Note[]> {
+    return this.fetch<Note[]>('/api/notes');
   }
 
-  async createNote(data: any) {
-    return this.fetch('/api/notes', {
+  async createNote(data: CreateNotePayload): Promise<Note> {
+    return this.fetch<Note>('/api/notes', {
       method: 'POST',
-      body: data,
+      body: data as unknown as Record<string, unknown>,
     });
   }
 
-  async updateNote(id: string, data: any) {
-    return this.fetch(`/api/notes/${id}`, {
+  async updateNote(id: string, data: UpdateNotePayload): Promise<Note> {
+    return this.fetch<Note>(`/api/notes/${id}`, {
       method: 'PATCH',
-      body: data,
+      body: data as unknown as Record<string, unknown>,
     });
   }
 
-  async deleteNote(id: string) {
-    return this.fetch(`/api/notes/${id}`, {
+  async deleteNote(id: string): Promise<void> {
+    return this.fetch<void>(`/api/notes/${id}`, {
       method: 'DELETE',
     });
   }
 
-  // 루틴
-  async getRoutines() {
-    return this.fetch<any>('/api/routines');
+  // --- Routines ---
+
+  async getRoutines(): Promise<RoutinesResponse | Routine[]> {
+    return this.fetch<RoutinesResponse | Routine[]>('/api/routines');
   }
 
-  async createRoutine(data: any) {
-    return this.fetch('/api/routines', {
+  async createRoutine(data: CreateRoutinePayload): Promise<Routine> {
+    return this.fetch<Routine>('/api/routines', {
       method: 'POST',
-      body: data,
+      body: data as unknown as Record<string, unknown>,
     });
   }
 
-  async updateRoutine(id: string, data: any) {
-    return this.fetch(`/api/routines/${id}`, {
+  async updateRoutine(id: string, data: UpdateRoutinePayload): Promise<Routine> {
+    return this.fetch<Routine>(`/api/routines/${id}`, {
       method: 'PATCH',
-      body: data,
+      body: data as unknown as Record<string, unknown>,
     });
   }
 
-  async deleteRoutine(id: string) {
-    return this.fetch(`/api/routines/${id}`, {
+  async deleteRoutine(id: string): Promise<void> {
+    return this.fetch<void>(`/api/routines/${id}`, {
       method: 'DELETE',
     });
   }
 
-  async toggleRoutineItem(routineId: string, itemIndex: number) {
-    return this.fetch(`/api/routines/${routineId}/log`, {
+  async toggleRoutineItem(routineId: string, itemIndex: number): Promise<RoutineLog> {
+    return this.fetch<RoutineLog>(`/api/routines/${routineId}/log`, {
       method: 'POST',
       body: { itemIndex },
     });
-  }
-
-  async startRoutine(routineId: string) {
-    return this.fetch(`/api/routines/${routineId}/log`, {
-      method: 'POST',
-      body: { action: 'start' },
-    });
-  }
-
-  // 통계
-  async getStats() {
-    return this.fetch<any>('/api/stats');
   }
 }
 

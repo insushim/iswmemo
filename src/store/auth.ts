@@ -1,7 +1,11 @@
 import { create } from 'zustand';
+import { Platform, NativeModules } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { User } from '../types';
 import { api } from '../lib/api';
+import { API_URL } from '../lib/config';
+
+const { AlarmModule } = NativeModules;
 
 interface AuthState {
   user: User | null;
@@ -15,9 +19,6 @@ interface AuthState {
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
 }
-
-// 안정적인 프로덕션 URL 사용
-const API_URL = 'https://growthpad.vercel.app';
 
 // SecureStore 키
 const TOKEN_KEY = 'auth_token';
@@ -47,6 +48,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // JWT 토큰 안전하게 저장
         await SecureStore.setItemAsync(TOKEN_KEY, data.token);
 
+        // 네이티브 알람에서 사용할 토큰 저장
+        if (Platform.OS === 'android' && AlarmModule) {
+          try { await AlarmModule.saveAuthToken(data.token); } catch {}
+        }
+
         // API 클라이언트에도 토큰 동기화
         await api.setToken(data.token);
 
@@ -54,11 +60,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ user: data.user, isAuthenticated: true });
         return true;
       } else {
-        console.error('Login failed:', data.error);
+        if (__DEV__) console.error('Login failed:', data.error);
         return false;
       }
     } catch (error) {
-      console.error('Login error:', error);
+      if (__DEV__) console.error('Login error:', error);
       return false;
     } finally {
       set({ isLoading: false });
@@ -81,7 +87,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       return false;
     } catch (error) {
-      console.error('Register error:', error);
+      if (__DEV__) console.error('Register error:', error);
       return false;
     } finally {
       set({ isLoading: false });
@@ -91,6 +97,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: async () => {
     // 저장된 토큰 삭제
     await SecureStore.deleteItemAsync(TOKEN_KEY);
+
+    // 네이티브 알람 토큰도 삭제
+    if (Platform.OS === 'android' && AlarmModule) {
+      try { await AlarmModule.saveAuthToken(''); } catch {}
+    }
 
     // API 클라이언트 토큰도 삭제
     await api.clearToken();
@@ -118,6 +129,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.user) {
+            // 네이티브 알람에서 사용할 토큰 동기화
+            if (Platform.OS === 'android' && AlarmModule) {
+              try { await AlarmModule.saveAuthToken(token); } catch {}
+            }
             set({ user: data.user, isAuthenticated: true });
             return;
           }
@@ -129,7 +144,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       set({ user: null, isAuthenticated: false });
     } catch (error) {
-      console.error('Auth check error:', error);
+      if (__DEV__) console.error('Auth check error:', error);
       set({ user: null, isAuthenticated: false });
     } finally {
       set({ isLoading: false });

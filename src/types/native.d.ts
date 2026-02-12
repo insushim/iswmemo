@@ -8,5 +8,19 @@ declare module 'react-native' {
       updateNotification(title: string, content: string): Promise<boolean>;
       isServiceRunning(): Promise<boolean>;
     };
+    AlarmModule: {
+      scheduleAlarm(taskId: string, title: string, timestamp: number): void;
+      cancelAlarm(taskId: string): void;
+      dismissAlarm(): void;
+    };
+    AutoLaunchModule: {
+      checkOverlayPermission(): Promise<boolean>;
+      requestOverlayPermission(): void;
+      checkFullScreenIntentPermission(): Promise<boolean>;
+      requestFullScreenIntentPermission(): void;
+      startService(): void;
+      stopService(): void;
+      openBatteryOptimization(): void;
+    };
   }
 }

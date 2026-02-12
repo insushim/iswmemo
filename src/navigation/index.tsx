@@ -1,9 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { ListTodo, Repeat, Target, Clock, MoreHorizontal } from 'lucide-react-native';
-import { Platform, View, Text } from 'react-native';
+import { ListTodo, Zap, Repeat, Target, StickyNote, Settings } from 'lucide-react-native';
+import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../lib/theme';
 import { useAuthStore } from '../store/auth';
@@ -12,9 +12,8 @@ import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import SimpleHomeScreen from '../screens/SimpleHomeScreen';
 import HabitsScreen from '../screens/HabitsScreen';
-import GoalsScreen from '../screens/GoalsScreen';
 import RoutinesScreen from '../screens/RoutinesScreen';
-import MoreScreen from '../screens/MoreScreen';
+import GoalsScreen from '../screens/GoalsScreen';
 import NotesScreen from '../screens/NotesScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 
@@ -26,12 +25,13 @@ function MainTabs() {
   const insets = useSafeAreaInsets();
 
   const bottomPadding = Platform.OS === 'android' ? Math.max(insets.bottom, 4) : 4;
-  const tabBarHeight = 52 + bottomPadding;
+  const tabBarHeight = 56 + bottomPadding;
 
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        lazy: true,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
         tabBarStyle: {
@@ -45,7 +45,7 @@ function MainTabs() {
           shadowOpacity: 0,
         },
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 9,
           fontWeight: '600',
           marginTop: -2,
         },
@@ -59,7 +59,7 @@ function MainTabs() {
         component={SimpleHomeScreen}
         options={{
           tabBarLabel: '할일',
-          tabBarIcon: ({ color, size }) => <ListTodo size={20} color={color} />,
+          tabBarIcon: ({ color }) => <ListTodo size={19} color={color} />,
         }}
       />
       <Tab.Screen
@@ -67,15 +67,7 @@ function MainTabs() {
         component={HabitsScreen}
         options={{
           tabBarLabel: '습관',
-          tabBarIcon: ({ color, size }) => <Repeat size={20} color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="Goals"
-        component={GoalsScreen}
-        options={{
-          tabBarLabel: '목표',
-          tabBarIcon: ({ color, size }) => <Target size={20} color={color} />,
+          tabBarIcon: ({ color }) => <Zap size={19} color={color} />,
         }}
       />
       <Tab.Screen
@@ -83,15 +75,31 @@ function MainTabs() {
         component={RoutinesScreen}
         options={{
           tabBarLabel: '루틴',
-          tabBarIcon: ({ color, size }) => <Clock size={20} color={color} />,
+          tabBarIcon: ({ color }) => <Repeat size={19} color={color} />,
         }}
       />
       <Tab.Screen
-        name="More"
-        component={MoreScreen}
+        name="Goals"
+        component={GoalsScreen}
         options={{
-          tabBarLabel: '더보기',
-          tabBarIcon: ({ color, size }) => <MoreHorizontal size={20} color={color} />,
+          tabBarLabel: '목표',
+          tabBarIcon: ({ color }) => <Target size={19} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="Notes"
+        component={NotesScreen}
+        options={{
+          tabBarLabel: '메모',
+          tabBarIcon: ({ color }) => <StickyNote size={19} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          tabBarLabel: '설정',
+          tabBarIcon: ({ color }) => <Settings size={19} color={color} />,
         }}
       />
     </Tab.Navigator>
@@ -120,11 +128,7 @@ export default function Navigation() {
             <Stack.Screen name="Register" component={RegisterScreen} />
           </>
         ) : (
-          <>
-            <Stack.Screen name="Main" component={MainTabs} />
-            <Stack.Screen name="Notes" component={NotesScreen} />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
-          </>
+          <Stack.Screen name="Main" component={MainTabs} />
         )}
       </Stack.Navigator>
     </NavigationContainer>

@@ -1,18 +1,23 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, TextInput, Modal, Alert } from 'react-native';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, Alert, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { Plus, X, Check, Flame } from 'lucide-react-native';
+import { Plus, X, Check, Flame, Trash2 } from 'lucide-react-native';
 import { format } from 'date-fns';
+import * as SecureStore from 'expo-secure-store';
 import { useTheme } from '../lib/theme';
 import { api } from '../lib/api';
 import { Habit } from '../types';
-import PinnedGoals from '../components/PinnedGoals';
+import GoalBanner from '../components/GoalBanner';
+import VoiceInput from '../components/VoiceInput';
+import { Swipeable } from 'react-native-gesture-handler';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 
 const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+const HABITS_CACHE_KEY = 'cached_habits_v1';
 
 export default function HabitsScreen() {
-  const { colors } = useTheme();
+  const { colors, scaledFont, cardPadding, textAlign } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -20,6 +25,24 @@ export default function HabitsScreen() {
   const [newHabitName, setNewHabitName] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
+  const hasLoadedRef = useRef(false);
+
+  // 캐시에서 즉시 로드
+  useEffect(() => {
+    const loadCached = async () => {
+      try {
+        const cached = await SecureStore.getItemAsync(HABITS_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setHabits(parsed);
+          }
+        }
+      } catch {}
+    };
+    loadCached();
+  }, []);
 
   const fetchHabits = async () => {
     try {
@@ -29,12 +52,13 @@ export default function HabitsScreen() {
         completedDates: habit.logs?.map((log) => log.date.split('T')[0]) || [],
       }));
       setHabits(habitsWithDates);
+      SecureStore.setItemAsync(HABITS_CACHE_KEY, JSON.stringify(habitsWithDates)).catch(() => {});
     } catch (error) {
       console.error('Habits fetch error:', error);
     }
   };
 
-  useFocusEffect(useCallback(() => { fetchHabits(); }, []));
+  useFocusEffect(useCallback(() => { if (!hasLoadedRef.current) { hasLoadedRef.current = true; fetchHabits(); } }, []));
 
   const onRefresh = async () => { setRefreshing(true); await fetchHabits(); setRefreshing(false); };
 
@@ -56,17 +80,54 @@ export default function HabitsScreen() {
     if (!newHabitName.trim()) { Alert.alert('오류', '습관 이름을 입력해주세요'); return; }
     if (isSubmitting) return;
     setIsSubmitting(true);
+    const isEditing = !!editingHabit;
+    const editId = editingHabit?.id;
+    const name = newHabitName.trim();
+
+    // 즉시 UI 업데이트 (Optimistic Update)
+    setShowModal(false);
+    let tempId = '';
+    if (!isEditing) {
+      tempId = `temp-${Date.now()}`;
+      const tempHabit = { id: tempId, name, color: selectedColor, frequency: 'DAILY', completedDates: [], currentStreak: 0, createdAt: new Date().toISOString() } as any;
+      setHabits(prev => [...prev, tempHabit]);
+    } else {
+      setHabits(prev => prev.map(h => h.id === editId ? { ...h, name, color: selectedColor } : h));
+    }
+
     try {
-      if (editingHabit) {
-        await api.updateHabit(editingHabit.id, { name: newHabitName.trim(), color: selectedColor });
+      if (isEditing && editId) {
+        await api.updateHabit(editId, { name, color: selectedColor });
       } else {
-        await api.createHabit({ name: newHabitName.trim(), color: selectedColor, frequency: 'DAILY' });
+        const created = await api.createHabit({ name, color: selectedColor, frequency: 'DAILY' }) as any;
+        if (created?.id && tempId) {
+          setHabits(prev => prev.map(h => h.id === tempId ? { ...h, id: created.id } : h));
+        }
       }
-      setShowModal(false);
-      await fetchHabits();
     } catch (error: any) {
       Alert.alert('오류', error?.message || '저장에 실패했습니다');
+      fetchHabits();
     } finally { setIsSubmitting(false); }
+  };
+
+  const renderRightActions = (habit: Habit) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const scale = dragX.interpolate({ inputRange: [-80, 0], outputRange: [1, 0.5], extrapolate: 'clamp' });
+    return (
+      <Animated.View style={[styles.swipeDelete, { transform: [{ scale }] }]}>
+        <TouchableOpacity style={styles.swipeDeleteBtn} onPress={() => {
+          Alert.alert('삭제', `"${habit.name}"을(를) 삭제하시겠습니까?`, [
+            { text: '취소', style: 'cancel', onPress: () => swipeableRefs.current.get(habit.id)?.close() },
+            { text: '삭제', style: 'destructive', onPress: async () => {
+              try { await api.deleteHabit(habit.id); await fetchHabits(); }
+              catch (error: any) { Alert.alert('오류', error?.message || '삭제에 실패했습니다'); }
+            }},
+          ]);
+        }}>
+          <Trash2 size={20} color="#fff" />
+          <Text style={styles.swipeDeleteText}>삭제</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
   };
 
   const handleCompleteHabit = async (habit: Habit) => {
@@ -90,27 +151,12 @@ export default function HabitsScreen() {
     }
   };
 
-  const handleLongPress = (habit: Habit) => {
-    Alert.alert(habit.name, '어떤 작업을 하시겠습니까?', [
-      { text: '수정', onPress: () => openEditModal(habit) },
-      { text: '삭제', style: 'destructive', onPress: () => {
-        Alert.alert('삭제', `"${habit.name}"을(를) 삭제하시겠습니까?`, [
-          { text: '취소', style: 'cancel' },
-          { text: '삭제', style: 'destructive', onPress: async () => {
-            try { await api.deleteHabit(habit.id); await fetchHabits(); }
-            catch (error: any) { Alert.alert('오류', error?.message || '삭제에 실패했습니다'); }
-          }},
-        ]);
-      }},
-      { text: '취소', style: 'cancel' },
-    ]);
-  };
-
   const today = format(new Date(), 'yyyy-MM-dd');
   const completedCount = habits.filter((h) => h.completedDates?.includes(today)).length;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      <GoalBanner />
       <View style={styles.header}>
         <View>
           <Text style={[styles.title, { color: colors.foreground }]}>습관</Text>
@@ -123,44 +169,53 @@ export default function HabitsScreen() {
         </TouchableOpacity>
       </View>
 
-      <PinnedGoals />
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      <DraggableFlatList
+        data={habits}
+        keyExtractor={(item) => item.id}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        onDragEnd={({ data }: { data: Habit[] }) => setHabits(data)}
         contentContainerStyle={styles.list}
-      >
-        {habits.length === 0 ? (
+        ListEmptyComponent={
           <View style={[styles.empty, { backgroundColor: colors.card }]}>
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>습관을 추가해보세요</Text>
           </View>
-        ) : (
-          habits.map((habit) => {
-            const isDone = habit.completedDates?.includes(today);
-            return (
-              <TouchableOpacity
-                key={habit.id}
-                activeOpacity={0.7}
-                style={[styles.habitItem, { backgroundColor: colors.card, borderLeftColor: habit.color || '#6366f1', borderLeftWidth: 3 }]}
-                onPress={() => handleCompleteHabit(habit)}
-                onLongPress={() => handleLongPress(habit)}
+        }
+        ListFooterComponent={<View style={{ height: 20 }} />}
+        ListHeaderComponent={
+          habits.length > 0 ? <Text style={[styles.hintText, { color: colors.mutedForeground }]}>꾹 눌러 드래그 | ← 밀어서 삭제</Text> : null
+        }
+        renderItem={({ item: habit, drag, isActive }: RenderItemParams<Habit>) => {
+          const isDone = habit.completedDates?.includes(today);
+          return (
+            <ScaleDecorator>
+              <Swipeable
+                ref={(ref) => { if (ref) swipeableRefs.current.set(habit.id, ref); }}
+                renderRightActions={renderRightActions(habit)}
+                overshootRight={false}
+                rightThreshold={40}
               >
-                <View style={styles.habitInfo}>
-                  <Text style={[styles.habitName, { color: isDone ? colors.mutedForeground : colors.foreground, textDecorationLine: isDone ? 'line-through' : 'none' }]}>{habit.name}</Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  style={[styles.habitItem, { backgroundColor: colors.card, borderLeftColor: habit.color || '#6366f1', borderLeftWidth: 3, paddingVertical: cardPadding, paddingHorizontal: cardPadding, opacity: isActive ? 0.8 : 1 }]}
+                  onPress={() => handleCompleteHabit(habit)}
+                  onLongPress={drag}
+                  disabled={isActive}
+                >
+                  <Text style={[styles.habitName, { color: isDone ? colors.mutedForeground : colors.foreground, textDecorationLine: isDone ? 'line-through' : 'none', fontSize: scaledFont(14), flex: 1 }]}>{habit.name}</Text>
                   <View style={styles.streakRow}>
                     <Flame size={11} color="#f97316" />
-                    <Text style={[styles.streakText, { color: colors.mutedForeground }]}>{habit.currentStreak || 0}일</Text>
+                    <Text style={[styles.streakText, { color: colors.mutedForeground, fontSize: scaledFont(11) }]}>{habit.currentStreak || 0}일째</Text>
                   </View>
-                </View>
-                <View style={[styles.checkCircle, { backgroundColor: isDone ? '#22c55e' : 'transparent', borderColor: isDone ? '#22c55e' : colors.border }]}>
-                  {isDone && <Check size={14} color="#fff" />}
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
-        <View style={{ height: 20 }} />
-      </ScrollView>
+                  <View style={[styles.checkCircle, { backgroundColor: isDone ? '#22c55e' : 'transparent', borderColor: isDone ? '#22c55e' : colors.border }]}>
+                    {isDone && <Check size={14} color="#fff" />}
+                  </View>
+                </TouchableOpacity>
+              </Swipeable>
+            </ScaleDecorator>
+          );
+        }}
+      />
 
       <Modal visible={showModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -170,14 +225,19 @@ export default function HabitsScreen() {
               <TouchableOpacity onPress={() => setShowModal(false)}><X size={22} color={colors.mutedForeground} /></TouchableOpacity>
             </View>
 
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
-              placeholder="습관 이름"
-              placeholderTextColor={colors.mutedForeground}
-              value={newHabitName}
-              onChangeText={setNewHabitName}
-              autoFocus
-            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <TextInput
+                style={[styles.input, { flex: 1, backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border, marginBottom: 0, minHeight: 40, maxHeight: 100, textAlignVertical: 'center' }]}
+                placeholder="습관 이름"
+                placeholderTextColor={colors.mutedForeground}
+                value={newHabitName}
+                onChangeText={setNewHabitName}
+                autoFocus
+                multiline
+                blurOnSubmit={false}
+              />
+              <VoiceInput color={colors.primary} onResult={(text) => setNewHabitName(prev => prev ? prev + ' ' + text : text)} />
+            </View>
 
             <Text style={[styles.label, { color: colors.foreground }]}>색상</Text>
             <View style={styles.colorRow}>
@@ -206,9 +266,8 @@ const styles = StyleSheet.create({
   empty: { padding: 24, borderRadius: 10, alignItems: 'center' },
   emptyText: { fontSize: 13 },
   habitItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, marginBottom: 4, gap: 10 },
-  habitInfo: { flex: 1 },
   habitName: { fontSize: 14, fontWeight: '500' },
-  streakRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
+  streakRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginRight: 8 },
   streakText: { fontSize: 11 },
   checkCircle: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, justifyContent: 'center', alignItems: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
@@ -221,4 +280,8 @@ const styles = StyleSheet.create({
   colorOption: { width: 30, height: 30, borderRadius: 15 },
   submitBtn: { padding: 14, borderRadius: 10, alignItems: 'center' },
   submitText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  hintText: { fontSize: 10, textAlign: 'right', paddingHorizontal: 4, marginBottom: 4 },
+  swipeDelete: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 4 },
+  swipeDeleteBtn: { backgroundColor: '#ef4444', borderRadius: 10, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
+  swipeDeleteText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
 });

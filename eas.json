@@ -15,6 +15,9 @@
       "android": {
         "buildType": "apk",
         "credentialsSource": "local"
+      },
+      "ios": {
+        "simulator": true
       }
     },
     "production": {
@@ -22,6 +25,9 @@
       "android": {
         "buildType": "apk",
         "credentialsSource": "local"
+      },
+      "ios": {
+        "distribution": "internal"
       }
     }
   },

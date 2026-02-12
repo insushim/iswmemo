@@ -1,35 +1,59 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
-  RefreshControl,
   TextInput,
   Modal,
   Alert,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, StickyNote, X, Search } from 'lucide-react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { Plus, StickyNote, X, Search, Trash2 } from 'lucide-react-native';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
+import * as SecureStore from 'expo-secure-store';
 import { useTheme } from '../lib/theme';
 import { api } from '../lib/api';
 import { Note } from '../types';
+import GoalBanner from '../components/GoalBanner';
+import VoiceInput from '../components/VoiceInput';
+import { Swipeable } from 'react-native-gesture-handler';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 
 const COLORS = ['#fef3c7', '#dcfce7', '#dbeafe', '#fce7f3', '#f3e8ff', '#fed7aa'];
+const NOTES_CACHE_KEY = 'cached_notes_v1';
 
 export default function NotesScreen() {
-  const { colors } = useTheme();
+  const { colors, scaledFont, cardPadding, textAlign } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
-  const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [saving, setSaving] = useState(false);
+  const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
+  const hasLoadedRef = useRef(false);
+
+  // 캐시에서 즉시 로드
+  useEffect(() => {
+    const loadCached = async () => {
+      try {
+        const cached = await SecureStore.getItemAsync(NOTES_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setNotes(parsed);
+          }
+        }
+      } catch {}
+    };
+    loadCached();
+  }, []);
 
   const fetchNotes = async () => {
     try {
@@ -37,14 +61,13 @@ export default function NotesScreen() {
       // API가 { notes, pagination } 형식으로 응답할 수 있음
       const data = Array.isArray(response) ? response : (response as any).notes;
       setNotes(data || []);
+      SecureStore.setItemAsync(NOTES_CACHE_KEY, JSON.stringify(data || [])).catch(() => {});
     } catch (error) {
       console.error('Notes fetch error:', error);
     }
   };
 
-  useEffect(() => {
-    fetchNotes();
-  }, []);
+  useFocusEffect(useCallback(() => { if (!hasLoadedRef.current) { hasLoadedRef.current = true; fetchNotes(); } }, []));
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -53,35 +76,62 @@ export default function NotesScreen() {
   };
 
   const handleSaveNote = async () => {
-    if (!noteTitle.trim()) {
-      Alert.alert('오류', '메모 제목을 입력해주세요');
+    if (saving) return;
+    if (!noteContent.trim()) {
+      Alert.alert('오류', '메모 내용을 입력해주세요');
       return;
     }
+    setSaving(true);
 
+    const autoTitle = noteContent.trim().split('\n')[0].slice(0, 20) || '메모';
+    const isEditing = !!editingNote;
+    const editId = editingNote?.id;
+    const content = noteContent;
+    const color = selectedColor;
+
+    // 모달 즉시 닫기
+    resetModal();
+
+    // 낙관적 업데이트 - UI 즉시 반영
+    let tempId = '';
+    if (isEditing && editId) {
+      setNotes(prev => prev.map(n => n.id === editId ? { ...n, title: autoTitle, content, color, updatedAt: new Date().toISOString() } : n));
+    } else {
+      tempId = `temp-${Date.now()}`;
+      const tempNote: Note = {
+        id: tempId,
+        title: autoTitle,
+        content,
+        isPinned: false,
+        isArchived: false,
+        isFavorite: false,
+        color,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setNotes(prev => [...prev, tempNote]);
+    }
+
+    // 백그라운드에서 서버 동기화
     try {
-      if (editingNote) {
-        await api.updateNote(editingNote.id, {
-          title: noteTitle,
-          content: noteContent,
-          color: selectedColor,
-        });
+      if (isEditing && editId) {
+        await api.updateNote(editId, { title: autoTitle, content, color });
       } else {
-        await api.createNote({
-          title: noteTitle,
-          content: noteContent,
-          color: selectedColor,
-        });
+        const created = await api.createNote({ title: autoTitle, content, color }) as any;
+        if (created?.id && tempId) {
+          setNotes(prev => prev.map(n => n.id === tempId ? { ...n, id: created.id } : n));
+        }
       }
-      resetModal();
-      fetchNotes();
     } catch (error) {
       Alert.alert('오류', '메모 저장에 실패했습니다');
+      fetchNotes();
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleEditNote = (note: Note) => {
     setEditingNote(note);
-    setNoteTitle(note.title);
     setNoteContent(note.content || '');
     setSelectedColor(note.color || COLORS[0]);
     setShowModal(true);
@@ -94,11 +144,12 @@ export default function NotesScreen() {
         text: '삭제',
         style: 'destructive',
         onPress: async () => {
+          setNotes(prev => prev.filter(n => n.id !== noteId));
           try {
             await api.deleteNote(noteId);
-            fetchNotes();
           } catch (error) {
             Alert.alert('오류', '삭제에 실패했습니다');
+            fetchNotes();
           }
         },
       },
@@ -108,9 +159,20 @@ export default function NotesScreen() {
   const resetModal = () => {
     setShowModal(false);
     setEditingNote(null);
-    setNoteTitle('');
     setNoteContent('');
     setSelectedColor(COLORS[0]);
+  };
+
+  const renderRightActions = (note: Note) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const scale = dragX.interpolate({ inputRange: [-80, 0], outputRange: [1, 0.5], extrapolate: 'clamp' });
+    return (
+      <Animated.View style={[styles.swipeDelete, { transform: [{ scale }] }]}>
+        <TouchableOpacity style={styles.swipeDeleteBtn} onPress={() => handleDeleteNote(note.id)}>
+          <Trash2 size={20} color="#fff" />
+          <Text style={styles.swipeDeleteText}>삭제</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
   };
 
   const filteredNotes = notes.filter(
@@ -121,6 +183,7 @@ export default function NotesScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <GoalBanner />
       {/* 헤더 */}
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.foreground }]}>메모</Text>
@@ -147,48 +210,57 @@ export default function NotesScreen() {
       </View>
 
       {/* 메모 목록 */}
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+      <DraggableFlatList
+        data={filteredNotes}
+        keyExtractor={(item) => item.id}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        onDragEnd={({ data }: { data: Note[] }) => setNotes(data)}
         contentContainerStyle={styles.listContainer}
-      >
-        {filteredNotes.length === 0 ? (
+        ListHeaderComponent={
+          filteredNotes.length > 0 ? (
+            <View style={styles.hintRow}>
+              <Text style={[styles.hintText, { color: colors.mutedForeground }]}>꾹 눌러 드래그 | ← 밀어서 삭제</Text>
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <StickyNote size={48} color={colors.mutedForeground} />
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
               {searchQuery ? '검색 결과가 없습니다' : '메모를 추가해보세요'}
             </Text>
           </View>
-        ) : (
-          <View style={styles.notesGrid}>
-            {filteredNotes.map((note) => (
+        }
+        renderItem={({ item: note, drag, isActive }: RenderItemParams<Note>) => (
+          <ScaleDecorator>
+            <Swipeable
+              ref={(ref) => { if (ref) swipeableRefs.current.set(note.id, ref); }}
+              renderRightActions={renderRightActions(note)}
+              overshootRight={false}
+              rightThreshold={40}
+            >
               <TouchableOpacity
-                key={note.id}
+                activeOpacity={0.7}
                 style={[
                   styles.noteCard,
-                  { backgroundColor: note.color || COLORS[0] },
+                  { backgroundColor: note.color || COLORS[0], padding: cardPadding + 2, opacity: isActive ? 0.8 : 1 },
                 ]}
                 onPress={() => handleEditNote(note)}
-                onLongPress={() => handleDeleteNote(note.id)}
+                onLongPress={drag}
+                disabled={isActive}
               >
-                <Text style={styles.noteTitle} numberOfLines={2}>
-                  {note.title}
+                <Text style={[styles.noteContent, { fontSize: scaledFont(13), textAlign }]}>
+                  {note.content || note.title}
                 </Text>
-                {note.content && (
-                  <Text style={styles.noteContent} numberOfLines={4}>
-                    {note.content}
-                  </Text>
-                )}
                 <Text style={styles.noteDate}>
                   {format(new Date(note.updatedAt), 'M월 d일', { locale: ko })}
                 </Text>
               </TouchableOpacity>
-            ))}
-          </View>
+            </Swipeable>
+          </ScaleDecorator>
         )}
-      </ScrollView>
+      />
 
       {/* 추가/수정 모달 */}
       <Modal visible={showModal} animationType="slide" transparent>
@@ -203,37 +275,31 @@ export default function NotesScreen() {
               </TouchableOpacity>
             </View>
 
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: colors.secondary,
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                },
-              ]}
-              placeholder="제목"
-              placeholderTextColor={colors.mutedForeground}
-              value={noteTitle}
-              onChangeText={setNoteTitle}
-            />
-
-            <TextInput
-              style={[
-                styles.textArea,
-                {
-                  backgroundColor: colors.secondary,
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                },
-              ]}
-              placeholder="내용을 입력하세요..."
-              placeholderTextColor={colors.mutedForeground}
-              value={noteContent}
-              onChangeText={setNoteContent}
-              multiline
-              textAlignVertical="top"
-            />
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+              <TextInput
+                style={[
+                  styles.textArea,
+                  {
+                    flex: 1,
+                    backgroundColor: colors.secondary,
+                    color: colors.foreground,
+                    borderColor: colors.border,
+                  },
+                ]}
+                placeholder="내용을 입력하세요..."
+                placeholderTextColor={colors.mutedForeground}
+                value={noteContent}
+                onChangeText={setNoteContent}
+                multiline
+                textAlignVertical="top"
+              />
+              <View style={{ paddingTop: 4 }}>
+                <VoiceInput
+                  color={colors.primary}
+                  onResult={(text) => setNoteContent(prev => prev ? prev + ' ' + text : text)}
+                />
+              </View>
+            </View>
 
             <Text style={[styles.label, { color: colors.foreground }]}>색상</Text>
             <View style={styles.colorRow}>
@@ -254,8 +320,9 @@ export default function NotesScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.submitButton, { backgroundColor: colors.primary }]}
+              style={[styles.submitButton, { backgroundColor: colors.primary, opacity: saving ? 0.5 : 1 }]}
               onPress={handleSaveNote}
+              disabled={saving}
             >
               <Text style={styles.submitText}>
                 {editingNote ? '수정' : '저장'}
@@ -318,27 +385,16 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 15,
   },
-  notesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
   noteCard: {
-    width: '47%',
     padding: 14,
     borderRadius: 12,
-    minHeight: 120,
-  },
-  noteTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 6,
+    marginBottom: 8,
+    marginHorizontal: 0,
   },
   noteContent: {
-    fontSize: 12,
-    color: '#4b5563',
-    lineHeight: 18,
+    fontSize: 13,
+    color: '#1f2937',
+    lineHeight: 19,
     flex: 1,
   },
   noteDate: {
@@ -410,4 +466,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  hintRow: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 4, marginBottom: 6 },
+  hintText: { fontSize: 10 },
+  swipeDelete: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 8 },
+  swipeDeleteBtn: { backgroundColor: '#ef4444', borderRadius: 12, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
+  swipeDeleteText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
 });

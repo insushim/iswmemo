@@ -1,4 +1,6 @@
+import { useMemo } from 'react';
 import { useColorScheme } from 'react-native';
+import { useSettingsStore, FONT_SIZE_SCALE, CARD_SIZE_PADDING, THEME_COLOR_OPTIONS } from '../store/settings';
 
 export const colors = {
   light: {
@@ -46,13 +48,36 @@ export const colors = {
 };
 
 export const useTheme = () => {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const systemScheme = useColorScheme();
+  const darkMode = useSettingsStore(state => state.darkMode);
+  const fontSize = useSettingsStore(state => state.fontSize);
+  const cardSize = useSettingsStore(state => state.cardSize);
+  const textAlign = useSettingsStore(state => state.textAlign);
+  const themeColor = useSettingsStore(state => state.themeColor);
 
-  return {
-    colors: isDark ? colors.dark : colors.light,
-    isDark,
-  };
+  const isDark = darkMode;
+
+  const themeColors = useMemo(() => {
+    const fontScale = FONT_SIZE_SCALE[fontSize] || 1.0;
+    const cardPadding = CARD_SIZE_PADDING[cardSize] || 12;
+    const themeOption = THEME_COLOR_OPTIONS[themeColor] || THEME_COLOR_OPTIONS.indigo;
+    const baseColors = isDark ? { ...colors.dark } : { ...colors.light };
+    baseColors.primary = isDark ? themeOption.primaryDark : themeOption.primary;
+    baseColors.ring = baseColors.primary;
+
+    const scaledFont = (size: number) => Math.round(size * fontScale);
+
+    return {
+      colors: baseColors,
+      isDark,
+      fontScale,
+      scaledFont,
+      cardPadding,
+      textAlign: textAlign as 'left' | 'center',
+    };
+  }, [isDark, fontSize, cardSize, textAlign, themeColor]);
+
+  return themeColors;
 };
 
 // 색상 유틸리티

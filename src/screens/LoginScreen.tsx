@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -43,12 +44,12 @@ export default function LoginScreen() {
       >
         {/* 로고 */}
         <View style={styles.header}>
-          <View style={[styles.logoContainer, { backgroundColor: colors.primary }]}>
-            <Text style={styles.logoText}>G</Text>
+          <View style={styles.logoContainer}>
+            <Image source={require('../../assets/icon.png')} style={styles.logoImage} resizeMode="cover" />
           </View>
-          <Text style={[styles.title, { color: colors.foreground }]}>GrowthPad</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>또박또박</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            성장하는 나의 하루
+            또박또박 적는 나의 기록
           </Text>
         </View>
 
@@ -137,17 +138,19 @@ const styles = StyleSheet.create({
     marginBottom: 48,
   },
   logoContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
+    width: 100,
+    height: 100,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+    overflow: 'hidden',
+    backgroundColor: '#6366f1',
   },
-  logoText: {
-    fontSize: 40,
-    fontWeight: 'bold',
-    color: '#fff',
+  logoImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 24,
   },
   title: {
     fontSize: 28,
