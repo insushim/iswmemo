@@ -1,1 +1,1 @@
-export const API_URL = 'https://growthpad.vercel.app';
+export const API_URL = 'https://growthpad.simssijjang.workers.dev';
