@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { Plus, StickyNote, X, Search, Trash2 } from 'lucide-react-native';
+import { Plus, StickyNote, X, Search, Trash2, Copy } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import * as SecureStore from 'expo-secure-store';
@@ -163,6 +164,21 @@ export default function NotesScreen() {
     setSelectedColor(COLORS[0]);
   };
 
+  const renderLeftActions = (note: Note) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const scale = dragX.interpolate({ inputRange: [0, 80], outputRange: [0.5, 1], extrapolate: 'clamp' });
+    return (
+      <Animated.View style={[styles.swipeCopy, { transform: [{ scale }] }]}>
+        <TouchableOpacity style={styles.swipeCopyBtn} onPress={() => {
+          Clipboard.setStringAsync(note.content || note.title);
+          swipeableRefs.current.get(note.id)?.close();
+        }}>
+          <Copy size={20} color="#fff" />
+          <Text style={styles.swipeCopyText}>복사</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
   const renderRightActions = (note: Note) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
     const scale = dragX.interpolate({ inputRange: [-80, 0], outputRange: [1, 0.5], extrapolate: 'clamp' });
     return (
@@ -236,9 +252,12 @@ export default function NotesScreen() {
           <ScaleDecorator>
             <Swipeable
               ref={(ref) => { if (ref) swipeableRefs.current.set(note.id, ref); }}
+              renderLeftActions={renderLeftActions(note)}
               renderRightActions={renderRightActions(note)}
+              overshootLeft={false}
               overshootRight={false}
-              rightThreshold={40}
+              leftThreshold={15}
+              rightThreshold={15}
             >
               <TouchableOpacity
                 activeOpacity={0.7}
@@ -292,6 +311,7 @@ export default function NotesScreen() {
                 onChangeText={setNoteContent}
                 multiline
                 textAlignVertical="top"
+                autoFocus
               />
               <View style={{ paddingTop: 4 }}>
                 <VoiceInput
@@ -401,6 +421,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#6b7280',
     marginTop: 8,
+    textAlign: 'right',
   },
   modalOverlay: {
     flex: 1,
@@ -471,4 +492,7 @@ const styles = StyleSheet.create({
   swipeDelete: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 8 },
   swipeDeleteBtn: { backgroundColor: '#ef4444', borderRadius: 12, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
   swipeDeleteText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
+  swipeCopy: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 8 },
+  swipeCopyBtn: { backgroundColor: '#3b82f6', borderRadius: 12, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
+  swipeCopyText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
 });

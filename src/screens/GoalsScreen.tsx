@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, RefreshControl, TextInput, Mo
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Swipeable } from 'react-native-gesture-handler';
-import { Plus, Target, X, Pin, Trash2 } from 'lucide-react-native';
+import { Plus, Target, X, Pin, Trash2, Copy } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import * as SecureStore from 'expo-secure-store';
 import { useTheme } from '../lib/theme';
 import { api } from '../lib/api';
@@ -125,6 +126,21 @@ export default function GoalsScreen() {
     ]);
   };
 
+  const renderLeftActions = (goal: Goal) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const scale = dragX.interpolate({ inputRange: [0, 80], outputRange: [0.5, 1], extrapolate: 'clamp' });
+    return (
+      <Animated.View style={[styles.swipeCopy, { transform: [{ scale }] }]}>
+        <TouchableOpacity style={styles.swipeCopyBtn} onPress={() => {
+          Clipboard.setStringAsync(goal.title);
+          swipeableRefs.current.get(goal.id)?.close();
+        }}>
+          <Copy size={20} color="#fff" />
+          <Text style={styles.swipeCopyText}>복사</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
   const renderRightActions = (goal: Goal) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
     const scale = dragX.interpolate({ inputRange: [-80, 0], outputRange: [1, 0.5], extrapolate: 'clamp' });
     return (
@@ -195,9 +211,12 @@ export default function GoalsScreen() {
             <ScaleDecorator>
               <Swipeable
                 ref={(ref) => { if (ref) swipeableRefs.current.set(goal.id, ref); }}
+                renderLeftActions={renderLeftActions(goal)}
                 renderRightActions={renderRightActions(goal)}
+                overshootLeft={false}
                 overshootRight={false}
-                rightThreshold={40}
+                leftThreshold={15}
+                rightThreshold={15}
               >
                 <TouchableOpacity
                   activeOpacity={0.7}
@@ -208,7 +227,7 @@ export default function GoalsScreen() {
                 >
                   <View style={styles.goalTop}>
                     <Text style={[styles.badge, { color: goal.color, backgroundColor: (goal.color || '#6366f1') + '15' }]}>{typeLabels[goal.type] || goal.type}</Text>
-                    <Text style={[styles.goalTitle, { color: colors.foreground, fontSize: scaledFont(14), flex: 1 }]}>{goal.title}</Text>
+                    <Text style={[styles.goalTitle, { color: colors.foreground, fontSize: scaledFont(14), flex: 1, textAlign }]}>{goal.title}</Text>
                     <TouchableOpacity
                       style={[styles.pinBtn, { backgroundColor: isPinned ? colors.primary + '20' : 'transparent' }]}
                       onPress={() => handlePinGoal(goal)}
@@ -313,4 +332,7 @@ const styles = StyleSheet.create({
   swipeDelete: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 6 },
   swipeDeleteBtn: { backgroundColor: '#ef4444', borderRadius: 10, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
   swipeDeleteText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
+  swipeCopy: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 6 },
+  swipeCopyBtn: { backgroundColor: '#3b82f6', borderRadius: 10, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
+  swipeCopyText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
 });

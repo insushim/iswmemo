@@ -6,10 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -45,7 +45,7 @@ export default function LoginScreen() {
         {/* 로고 */}
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <Image source={require('../../assets/icon.png')} style={styles.logoImage} resizeMode="cover" />
+            <Image source={require('../../assets/icon.png')} style={styles.logoImage} />
           </View>
           <Text style={[styles.title, { color: colors.foreground }]}>또박또박</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
@@ -145,7 +145,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
     overflow: 'hidden',
-    backgroundColor: '#6366f1',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
   },
   logoImage: {
     width: 100,

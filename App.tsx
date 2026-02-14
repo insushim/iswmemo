@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Platform, NativeModules, Alert, AppState } from 'react-native';
+import { Platform, NativeModules, Alert, AppState, InteractionManager } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import Navigation from './src/navigation';
@@ -54,108 +54,100 @@ export default function App() {
     init();
   }, []);
 
-  // 로그인 후 필요 권한 요청 (하나씩 순차적으로)
+  // 로그인 후 필요 권한 요청 (다른 앱 위에 표시 → 알람 순서로)
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Alert 표시 → "설정 열기" 누르면 설정 이동 → 돌아올 때까지 대기
-    const askPermission = (title: string, msg: string, openFn: () => void) =>
+    // 설정 화면으로 이동 후 돌아올 때까지 대기
+    const openSettingsAndWait = (openFn: () => void) =>
       new Promise<void>((resolve) => {
-        Alert.alert(title, msg, [
-          { text: '나중에', style: 'cancel', onPress: () => resolve() },
-          {
-            text: '설정 열기',
-            onPress: () => {
-              openFn();
-              // 설정에서 돌아올 때까지 대기
-              let left = false;
-              const sub = AppState.addEventListener('change', (s) => {
-                if (s === 'background') left = true;
-                if (left && s === 'active') {
-                  sub.remove();
-                  setTimeout(resolve, 500);
-                }
-              });
-              setTimeout(() => { sub.remove(); resolve(); }, 60000);
-            },
-          },
-        ]);
+        let left = false;
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          sub.remove();
+          setTimeout(resolve, 600);
+        };
+        // 리스너를 먼저 등록한 후 설정 열기 (타이밍 이슈 방지)
+        const sub = AppState.addEventListener('change', (s) => {
+          if (s !== 'active') left = true;
+          if (left && s === 'active') finish();
+        });
+        openFn();
+        setTimeout(finish, 120000); // 2분 안전장치
       });
 
     const requestAllPermissions = async () => {
       try {
         if (Platform.OS !== 'android' || !AutoLaunchModule) return;
 
-        // 1. POST_NOTIFICATIONS 권한
-        await requestNotificationPermission();
-
-        // 2. 자동 시작 권한 안내
-        await promptAutoStart();
-
-        // 3. 오버레이 권한
+        // 1. 다른 앱 위에 표시 권한 (최우선, 필수)
         const hasOverlay = await AutoLaunchModule.checkOverlayPermission();
         if (!hasOverlay) {
-          await askPermission(
-            '다른 앱 위에 표시',
-            '알람이 화면에 표시되려면 이 권한이 필요합니다.\n\n또박또박을 찾아 권한을 켜주세요.',
-            () => AutoLaunchModule.requestOverlayPermission(),
-          );
-        } else if (autoLaunchEnabled) {
-          AutoLaunchModule.startService();
-        }
-
-        // 4. 정확한 알람 권한
-        const hasAlarm = await AutoLaunchModule.checkExactAlarmPermission();
-        if (!hasAlarm) {
-          await askPermission(
-            '알람 및 리마인더',
-            '할일 기한 알람이 정확히 울리려면 이 권한이 필요합니다.',
-            () => AutoLaunchModule.requestExactAlarmPermission(),
-          );
-        }
-
-        // 5. 전체 화면 알림 권한
-        const hasFullScreen = await AutoLaunchModule.checkFullScreenIntentPermission();
-        if (!hasFullScreen) {
-          await askPermission(
-            '전체 화면 알림',
-            '알람이 전체 화면으로 표시되려면 이 권한이 필요합니다.',
-            () => AutoLaunchModule.requestFullScreenIntentPermission(),
-          );
-        }
-
-        // 6. 배터리 최적화 예외 (시스템 다이얼로그라 앱이 백그라운드로 안 감)
-        try {
           await new Promise<void>((resolve) => {
             Alert.alert(
-              '배터리 최적화',
-              '알람이 절전 모드에서도 정확히 울리려면 배터리 최적화를 해제해주세요.\n\n"허용"을 선택하세요.',
-              [
-                { text: '나중에', style: 'cancel', onPress: () => resolve() },
-                {
-                  text: '설정 열기',
-                  onPress: () => {
-                    AutoLaunchModule.openBatteryOptimization();
-                    // 시스템 다이얼로그는 앱 위에 뜨므로 3초 후 resolve
-                    setTimeout(resolve, 3000);
-                  },
+              '권한 필요: 다른 앱 위에 표시',
+              '화면 자동실행과 알람 표시에 필수 권한입니다.\n\n설정에서 또박또박을 찾아 권한을 켜주세요.',
+              [{
+                text: '설정으로 이동',
+                onPress: () => {
+                  openSettingsAndWait(() => AutoLaunchModule.requestOverlayPermission())
+                    .then(resolve);
                 },
-              ],
+              }],
+              { cancelable: false },
             );
           });
-        } catch {}
+        }
+
+        // 오버레이 허용됐으면 서비스 시작
+        if (autoLaunchEnabled) {
+          try { AutoLaunchModule.startService(); } catch {}
+        }
+
+        // 2. 알람 및 리마인더 권한 (필수)
+        const hasAlarm = await AutoLaunchModule.checkExactAlarmPermission();
+        if (!hasAlarm) {
+          await new Promise<void>((resolve) => {
+            Alert.alert(
+              '권한 필요: 알람 및 리마인더',
+              '할일 기한 알람이 정확히 울리려면 필수 권한입니다.\n\n설정에서 권한을 켜주세요.',
+              [{
+                text: '설정으로 이동',
+                onPress: () => {
+                  openSettingsAndWait(() => AutoLaunchModule.requestExactAlarmPermission())
+                    .then(resolve);
+                },
+              }],
+              { cancelable: false },
+            );
+          });
+        }
+
+        // 3. POST_NOTIFICATIONS 권한
+        await requestNotificationPermission();
+
+        // 4. 자동 시작 권한 안내 (제조사별)
+        await promptAutoStart();
+
       } catch (e) {
         if (__DEV__) console.error('Permission request error:', e);
       }
     };
-    const timer = setTimeout(requestAllPermissions, 1500);
-    return () => clearTimeout(timer);
+
+    // InteractionManager로 렌더링 완료 후 권한 요청 (렉 방지)
+    const handle = InteractionManager.runAfterInteractions(() => {
+      const timer = setTimeout(requestAllPermissions, 800);
+      return () => clearTimeout(timer);
+    });
+    return () => handle.cancel();
   }, [isAuthenticated]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar style={darkMode ? "light" : "dark"} />
+        <StatusBar style={darkMode ? "light" : "dark"} translucent={true} backgroundColor="transparent" />
         <Navigation />
       </SafeAreaProvider>
     </GestureHandlerRootView>

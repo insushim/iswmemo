@@ -28,6 +28,8 @@ import {
   Bell,
   Smartphone,
   Palette,
+  Calendar,
+  FileText,
 } from 'lucide-react-native';
 import { useTheme, levelSystem } from '../lib/theme';
 import { useAuthStore } from '../store/auth';
@@ -52,10 +54,12 @@ export default function SettingsScreen() {
     textAlign, setTextAlign,
     themeColor, setThemeColor,
     taskAlarmEnabled, setTaskAlarmEnabled,
+    scheduleAlarmEnabled, setScheduleAlarmEnabled,
     autoLaunchEnabled, setAutoLaunchEnabled,
   } = useSettingsStore();
   const [showHelp, setShowHelp] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showLicense, setShowLicense] = useState(false);
   const [showFontSize, setShowFontSize] = useState(false);
   const [showCardSize, setShowCardSize] = useState(false);
   const [showTextAlign, setShowTextAlign] = useState(false);
@@ -300,6 +304,20 @@ export default function SettingsScreen() {
               />
             }
           />
+          <SettingItem
+            icon={Calendar}
+            iconColor="#3b82f6"
+            title="일정 알림"
+            subtitle={scheduleAlarmEnabled ? '일정 시간에 알림' : '꺼짐'}
+            rightElement={
+              <Switch
+                value={scheduleAlarmEnabled}
+                onValueChange={setScheduleAlarmEnabled}
+                trackColor={{ false: colors.secondary, true: colors.primary }}
+                thumbColor="#fff"
+              />
+            }
+          />
         </View>
 
         {/* 지원 */}
@@ -318,6 +336,13 @@ export default function SettingsScreen() {
             title="개인정보 처리방침"
             onPress={() => setShowPrivacy(true)}
           />
+          <SettingItem
+            icon={FileText}
+            iconColor="#6366f1"
+            title="출처 및 라이선스"
+            subtitle="공공데이터, 오픈소스 라이선스"
+            onPress={() => setShowLicense(true)}
+          />
         </View>
 
         <View style={styles.section}>
@@ -332,7 +357,7 @@ export default function SettingsScreen() {
 
         <View style={styles.appInfo}>
           <Text style={[styles.appName, { color: colors.mutedForeground }]}>또박또박</Text>
-          <Text style={[styles.appVersion, { color: colors.mutedForeground }]}>버전 2.1.0</Text>
+          <Text style={[styles.appVersion, { color: colors.mutedForeground }]}>버전 2.2.0</Text>
         </View>
       </ScrollView>
 
@@ -358,10 +383,11 @@ export default function SettingsScreen() {
                 매일 반복하는 습관을 등록하고 체크하세요.{'\n'}
                 꾸준히 하면 연속 달성 기록이 쌓입니다.
               </Text>
-              <Text style={[styles.helpSection, { color: colors.foreground }]}>🔄 루틴</Text>
+              <Text style={[styles.helpSection, { color: colors.foreground }]}>📅 일정</Text>
               <Text style={[styles.helpText, { color: colors.mutedForeground }]}>
-                아침, 저녁 등 일상 루틴을 관리하세요.{'\n'}
-                루틴 안에 여러 단계를 추가할 수 있습니다.
+                날짜, 시간, 장소를 지정해 하루 일정을 관리하세요.{'\n'}
+                시간에 맞춰 알림을 받을 수 있습니다.{'\n'}
+                일정을 공유 버튼으로 다른 사용자에게 보낼 수 있습니다.
               </Text>
               <Text style={[styles.helpSection, { color: colors.foreground }]}>🎯 목표</Text>
               <Text style={[styles.helpText, { color: colors.mutedForeground }]}>
@@ -564,6 +590,69 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+      {/* 출처 및 라이선스 모달 */}
+      <Modal visible={showLicense} animationType="slide" transparent onRequestClose={() => setShowLicense(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>출처 및 라이선스</Text>
+              <TouchableOpacity onPress={() => setShowLicense(false)}>
+                <X size={22} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.privacyTitle, { color: colors.foreground }]}>공공데이터 출처</Text>
+
+              <Text style={[styles.privacySection, { color: colors.foreground }]}>기상청 단기예보 조회서비스</Text>
+              <Text style={[styles.privacyText, { color: colors.mutedForeground }]}>
+                본 저작물은 '기상청'에서 작성하여 공공누리 제1유형으로 개방한 '단기예보 조회서비스'를 이용하였으며, 해당 저작물은 기상청(data.kma.go.kr)에서 무료로 다운받으실 수 있습니다.{'\n\n'}
+                - 공공누리 제1유형: 출처표시{'\n'}
+                - 상업적 이용 가능, 2차 저작물 작성 가능
+              </Text>
+
+              <Text style={[styles.privacySection, { color: colors.foreground }]}>에어코리아 대기오염정보</Text>
+              <Text style={[styles.privacyText, { color: colors.mutedForeground }]}>
+                본 저작물은 '한국환경공단'에서 작성하여 공공누리 제3유형으로 개방한 '에어코리아 대기오염정보'를 이용하였으며, 해당 저작물은 에어코리아(airkorea.or.kr)에서 무료로 다운받으실 수 있습니다.{'\n\n'}
+                - 공공누리 제3유형: 출처표시 + 변경금지{'\n'}
+                - 상업적 이용 가능, 원본 데이터 변경 금지
+              </Text>
+
+              <View style={[styles.licenseDivider, { backgroundColor: colors.border }]} />
+
+              <Text style={[styles.privacyTitle, { color: colors.foreground }]}>오픈소스 라이선스</Text>
+              <Text style={[styles.privacyText, { color: colors.mutedForeground, marginBottom: 8 }]}>
+                이 앱은 다음의 오픈소스 라이브러리를 사용합니다. 모든 라이브러리는 MIT License로 배포됩니다.
+              </Text>
+
+              {[
+                { name: 'React Native', by: 'Meta Platforms, Inc.' },
+                { name: 'Expo', by: '650 Industries (Expo)' },
+                { name: 'expo-location', by: '650 Industries (Expo)' },
+                { name: 'expo-notifications', by: '650 Industries (Expo)' },
+                { name: 'expo-speech-recognition', by: '650 Industries (Expo)' },
+                { name: 'react-native-gesture-handler', by: 'Software Mansion' },
+                { name: 'react-native-reanimated', by: 'Software Mansion' },
+                { name: 'date-fns', by: 'Sasha Koss' },
+                { name: 'zustand', by: 'Daishi Kato' },
+                { name: 'lucide-react-native', by: 'Lucide Contributors' },
+              ].map((lib) => (
+                <View key={lib.name} style={styles.licenseItem}>
+                  <Text style={[styles.licenseName, { color: colors.foreground }]}>{lib.name}</Text>
+                  <Text style={[styles.licenseBy, { color: colors.mutedForeground }]}>{lib.by}</Text>
+                </View>
+              ))}
+
+              <Text style={[styles.privacyText, { color: colors.mutedForeground, marginTop: 12 }]}>
+                MIT License{'\n\n'}
+                Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files, to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software.{'\n\n'}
+                THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+              </Text>
+
+              <View style={{ height: 40 }} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -617,4 +706,8 @@ const styles = StyleSheet.create({
   themeColorItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, gap: 12 },
   themeColorDot: { width: 24, height: 24, borderRadius: 12 },
   themeColorLabel: { flex: 1, fontSize: 15, fontWeight: '500' },
+  licenseDivider: { height: 1, marginVertical: 20 },
+  licenseItem: { paddingVertical: 6, paddingHorizontal: 4 },
+  licenseName: { fontSize: 13, fontWeight: '600' },
+  licenseBy: { fontSize: 11, marginTop: 1 },
 });

@@ -4,7 +4,8 @@ import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-nativ
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Swipeable, TouchableOpacity as GHTouchable } from 'react-native-gesture-handler';
-import { Plus, X, Calendar, Clock, AlertCircle, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react-native';
+import { Plus, X, Calendar, Clock, AlertCircle, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Copy } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import { format, addDays, isBefore, parseISO, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import * as SecureStore from 'expo-secure-store';
@@ -198,6 +199,21 @@ export default function SimpleHomeScreen() {
   };
 
 
+  const renderLeftActions = (t: Task) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const scale = dragX.interpolate({ inputRange: [0, 80], outputRange: [0.5, 1], extrapolate: 'clamp' });
+    return (
+      <Animated.View style={[styles.swipeCopy, { transform: [{ scale }] }]}>
+        <TouchableOpacity style={styles.swipeCopyBtn} onPress={() => {
+          Clipboard.setStringAsync(t.title);
+          swipeableRefs.current.get(t.id)?.close();
+        }}>
+          <Copy size={20} color="#fff" />
+          <Text style={styles.swipeCopyText}>복사</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
   const renderRightActions = (t: Task) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
     const scale = dragX.interpolate({ inputRange: [-80, 0], outputRange: [1, 0.5], extrapolate: 'clamp' });
     return (
@@ -234,6 +250,10 @@ export default function SimpleHomeScreen() {
     return [...paddingDays, ...days];
   };
 
+  const closeAllSwipeables = () => {
+    swipeableRefs.current.forEach((ref) => ref?.close());
+  };
+
   const renderTaskItem = ({ item: t, drag, isActive }: RenderItemParams<Task>) => {
     const di = getDueDateInfo(t);
     const o = isOverdue(t);
@@ -241,9 +261,12 @@ export default function SimpleHomeScreen() {
       <ScaleDecorator>
         <Swipeable
           ref={(ref) => { if (ref) swipeableRefs.current.set(t.id, ref); }}
+          renderLeftActions={renderLeftActions(t)}
           renderRightActions={renderRightActions(t)}
+          overshootLeft={false}
           overshootRight={false}
-          rightThreshold={30}
+          leftThreshold={15}
+          rightThreshold={15}
           containerStyle={{ flex: 1 }}
         >
           <GHTouchable
@@ -254,13 +277,13 @@ export default function SimpleHomeScreen() {
               o && { borderLeftColor: '#ef4444', borderLeftWidth: 3 },
             ]}
             onPress={() => openEditModal(t)}
-            onLongPress={drag}
+            onLongPress={() => { closeAllSwipeables(); drag(); }}
             enabled={!isActive}
           >
             <View style={styles.taskContent}>
               <Text style={[styles.taskTitle, { color: colors.foreground, fontSize: scaledFont(14), textAlign }]}>{t.title}</Text>
               {di && (
-                <View style={styles.dueDateRow}>
+                <View style={[styles.dueDateRow, textAlign === 'center' && { justifyContent: 'center' }]}>
                   {o ? <AlertCircle size={11} color="#ef4444" /> : <Clock size={11} color={di.isUrgent ? colors.primary : colors.mutedForeground} />}
                   <Text style={[styles.dueDateText, { color: o ? '#ef4444' : di.isUrgent ? colors.primary : colors.mutedForeground, fontSize: scaledFont(11) }]}>{di.text}</Text>
                 </View>
@@ -511,6 +534,9 @@ const styles = StyleSheet.create({
   swipeDelete: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 4 },
   swipeDeleteBtn: { backgroundColor: '#ef4444', borderRadius: 10, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
   swipeDeleteText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
+  swipeCopy: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 4 },
+  swipeCopyBtn: { backgroundColor: '#3b82f6', borderRadius: 10, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
+  swipeCopyText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
   fab: { position: 'absolute', right: 16, bottom: 16, width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 32, maxHeight: '90%' },

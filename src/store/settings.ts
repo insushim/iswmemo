@@ -57,6 +57,7 @@ interface SettingsState {
   textAlign: TextAlignOption;
   themeColor: ThemeColorOption;
   taskAlarmEnabled: boolean;
+  scheduleAlarmEnabled: boolean;
   autoLaunchEnabled: boolean;
   isLoaded: boolean;
   setDarkMode: (value: boolean) => Promise<void>;
@@ -65,6 +66,7 @@ interface SettingsState {
   setTextAlign: (align: TextAlignOption) => Promise<void>;
   setThemeColor: (color: ThemeColorOption) => Promise<void>;
   setTaskAlarmEnabled: (value: boolean) => Promise<void>;
+  setScheduleAlarmEnabled: (value: boolean) => Promise<void>;
   setAutoLaunchEnabled: (value: boolean) => Promise<void>;
   loadSettings: () => Promise<void>;
 }
@@ -87,6 +89,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   textAlign: 'left',
   themeColor: 'indigo',
   taskAlarmEnabled: true,
+  scheduleAlarmEnabled: true,
   autoLaunchEnabled: true,
   isLoaded: false,
 
@@ -120,6 +123,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     set({ taskAlarmEnabled: value });
   },
 
+  setScheduleAlarmEnabled: async (value: boolean) => {
+    await saveDisplaySettings({ scheduleAlarmEnabled: value });
+    set({ scheduleAlarmEnabled: value });
+  },
+
   setAutoLaunchEnabled: async (value: boolean) => {
     await saveDisplaySettings({ autoLaunchEnabled: value });
     set({ autoLaunchEnabled: value });
@@ -138,6 +146,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         textAlign: display.textAlign || 'left',
         themeColor: display.themeColor || 'indigo',
         taskAlarmEnabled: display.taskAlarmEnabled !== false,
+        scheduleAlarmEnabled: display.scheduleAlarmEnabled !== false,
         autoLaunchEnabled: display.autoLaunchEnabled !== false,
         isLoaded: true,
       });

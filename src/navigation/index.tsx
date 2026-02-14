@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { ListTodo, Zap, Repeat, Target, StickyNote, Settings } from 'lucide-react-native';
+import { ListTodo, Zap, CalendarDays, Target, StickyNote, Settings } from 'lucide-react-native';
 import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../lib/theme';
@@ -12,7 +12,7 @@ import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import SimpleHomeScreen from '../screens/SimpleHomeScreen';
 import HabitsScreen from '../screens/HabitsScreen';
-import RoutinesScreen from '../screens/RoutinesScreen';
+import ScheduleScreen from '../screens/ScheduleScreen';
 import GoalsScreen from '../screens/GoalsScreen';
 import NotesScreen from '../screens/NotesScreen';
 import SettingsScreen from '../screens/SettingsScreen';
@@ -71,11 +71,11 @@ function MainTabs() {
         }}
       />
       <Tab.Screen
-        name="Routines"
-        component={RoutinesScreen}
+        name="Schedule"
+        component={ScheduleScreen}
         options={{
-          tabBarLabel: '루틴',
-          tabBarIcon: ({ color }) => <Repeat size={19} color={color} />,
+          tabBarLabel: '일정',
+          tabBarIcon: ({ color }) => <CalendarDays size={19} color={color} />,
         }}
       />
       <Tab.Screen

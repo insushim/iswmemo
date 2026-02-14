@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, CheckCircle2, Circle, X, Calendar, Flag, Trash2 } from 'lucide-react-native';
+import { Plus, CheckCircle2, Circle, X, Calendar, Flag, Trash2, Copy } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { useFocusEffect } from '@react-navigation/native';
@@ -112,6 +113,21 @@ export default function TasksScreen() {
     ]);
   };
 
+
+  const renderLeftActions = (task: Task) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const scale = dragX.interpolate({ inputRange: [0, 80], outputRange: [0.5, 1], extrapolate: 'clamp' });
+    return (
+      <Animated.View style={[styles.swipeCopy, { transform: [{ scale }] }]}>
+        <TouchableOpacity style={styles.swipeCopyBtn} onPress={() => {
+          Clipboard.setStringAsync(task.title);
+          swipeableRefs.current.get(task.id)?.close();
+        }}>
+          <Copy size={20} color="#fff" />
+          <Text style={styles.swipeCopyText}>복사</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
 
   const renderRightActions = (task: Task) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
     const scale = dragX.interpolate({ inputRange: [-80, 0], outputRange: [1, 0.5], extrapolate: 'clamp' });
@@ -245,8 +261,11 @@ export default function TasksScreen() {
           <ScaleDecorator>
             <Swipeable
               ref={(ref) => { if (ref) swipeableRefs.current.set(task.id, ref); }}
+              renderLeftActions={renderLeftActions(task)}
               renderRightActions={renderRightActions(task)}
+              overshootLeft={false}
               overshootRight={false}
+              leftThreshold={15}
               rightThreshold={40}
             >
               <TouchableOpacity
@@ -343,6 +362,7 @@ export default function TasksScreen() {
                 onChangeText={setNewTaskTitle}
                 multiline
                 blurOnSubmit={false}
+                autoFocus
               />
               <VoiceInput color={colors.primary} onResult={(text) => setNewTaskTitle(prev => prev ? prev + ' ' + text : text)} />
             </View>
@@ -558,4 +578,7 @@ const styles = StyleSheet.create({
   swipeDelete: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 10 },
   swipeDeleteBtn: { backgroundColor: '#ef4444', borderRadius: 12, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
   swipeDeleteText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
+  swipeCopy: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 10 },
+  swipeCopyBtn: { backgroundColor: '#3b82f6', borderRadius: 12, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
+  swipeCopyText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
 });

@@ -2,7 +2,8 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, Alert, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { Plus, X, Check, Flame, Trash2 } from 'lucide-react-native';
+import { Plus, X, Check, Flame, Trash2, Pencil, Copy } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import { format } from 'date-fns';
 import * as SecureStore from 'expo-secure-store';
 import { useTheme } from '../lib/theme';
@@ -110,6 +111,21 @@ export default function HabitsScreen() {
     } finally { setIsSubmitting(false); }
   };
 
+  const renderLeftActions = (habit: Habit) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const scale = dragX.interpolate({ inputRange: [0, 80], outputRange: [0.5, 1], extrapolate: 'clamp' });
+    return (
+      <Animated.View style={[styles.swipeCopy, { transform: [{ scale }] }]}>
+        <TouchableOpacity style={styles.swipeCopyBtn} onPress={() => {
+          Clipboard.setStringAsync(habit.name);
+          swipeableRefs.current.get(habit.id)?.close();
+        }}>
+          <Copy size={20} color="#fff" />
+          <Text style={styles.swipeCopyText}>복사</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
   const renderRightActions = (habit: Habit) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
     const scale = dragX.interpolate({ inputRange: [-80, 0], outputRange: [1, 0.5], extrapolate: 'clamp' });
     return (
@@ -118,8 +134,10 @@ export default function HabitsScreen() {
           Alert.alert('삭제', `"${habit.name}"을(를) 삭제하시겠습니까?`, [
             { text: '취소', style: 'cancel', onPress: () => swipeableRefs.current.get(habit.id)?.close() },
             { text: '삭제', style: 'destructive', onPress: async () => {
-              try { await api.deleteHabit(habit.id); await fetchHabits(); }
-              catch (error: any) { Alert.alert('오류', error?.message || '삭제에 실패했습니다'); }
+              const prev = [...habits];
+              setHabits(h => h.filter(x => x.id !== habit.id));
+              try { await api.deleteHabit(habit.id); }
+              catch (error: any) { setHabits(prev); Alert.alert('오류', error?.message || '삭제에 실패했습니다'); }
             }},
           ]);
         }}>
@@ -191,9 +209,12 @@ export default function HabitsScreen() {
             <ScaleDecorator>
               <Swipeable
                 ref={(ref) => { if (ref) swipeableRefs.current.set(habit.id, ref); }}
+                renderLeftActions={renderLeftActions(habit)}
                 renderRightActions={renderRightActions(habit)}
+                overshootLeft={false}
                 overshootRight={false}
-                rightThreshold={40}
+                leftThreshold={15}
+                rightThreshold={15}
               >
                 <TouchableOpacity
                   activeOpacity={0.7}
@@ -202,11 +223,14 @@ export default function HabitsScreen() {
                   onLongPress={drag}
                   disabled={isActive}
                 >
-                  <Text style={[styles.habitName, { color: isDone ? colors.mutedForeground : colors.foreground, textDecorationLine: isDone ? 'line-through' : 'none', fontSize: scaledFont(14), flex: 1 }]}>{habit.name}</Text>
+                  <Text style={[styles.habitName, { color: isDone ? colors.mutedForeground : colors.foreground, textDecorationLine: isDone ? 'line-through' : 'none', fontSize: scaledFont(14), flex: 1, textAlign }]}>{habit.name}</Text>
                   <View style={styles.streakRow}>
                     <Flame size={11} color="#f97316" />
                     <Text style={[styles.streakText, { color: colors.mutedForeground, fontSize: scaledFont(11) }]}>{habit.currentStreak || 0}일째</Text>
                   </View>
+                  <TouchableOpacity onPress={() => openEditModal(habit)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ padding: 4 }}>
+                    <Pencil size={14} color={colors.mutedForeground} />
+                  </TouchableOpacity>
                   <View style={[styles.checkCircle, { backgroundColor: isDone ? '#22c55e' : 'transparent', borderColor: isDone ? '#22c55e' : colors.border }]}>
                     {isDone && <Check size={14} color="#fff" />}
                   </View>
@@ -284,4 +308,7 @@ const styles = StyleSheet.create({
   swipeDelete: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 4 },
   swipeDeleteBtn: { backgroundColor: '#ef4444', borderRadius: 10, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
   swipeDeleteText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
+  swipeCopy: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 4 },
+  swipeCopyBtn: { backgroundColor: '#3b82f6', borderRadius: 10, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
+  swipeCopyText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
 });
