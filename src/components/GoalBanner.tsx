@@ -59,10 +59,10 @@ export default function GoalBanner() {
         <Text style={styles.alertText}>{weather.alerts.join(' ')}</Text>
       )}
 
-      {/* 출처 */}
+      {/* 출처 + 측정소명 */}
       {weather && (
         <Text style={[styles.sourceText, { color: colors.mutedForeground }]}>
-          {weather.dustSource}
+          {weather.stationName ? `${weather.stationName} · ` : ''}{weather.dustSource}
         </Text>
       )}
 

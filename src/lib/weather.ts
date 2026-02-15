@@ -7,6 +7,7 @@ export interface WeatherData {
   pm10: number;
   dustLevel: string;
   dustSource: string;
+  stationName: string;
   weatherDesc: string;
   weatherIcon: string;
   alerts: string[];
@@ -48,7 +49,7 @@ export { getDustLevel, getDustLevel10, getDustColor, getDustColor10 };
 // === 캐시 ===
 let cachedWeather: WeatherData | null = null;
 let cacheTimestamp = 0;
-const CACHE_DURATION = 30 * 60 * 1000; // 30분 (서버에서 1시간 캐시하므로 클라이언트는 30분)
+const CACHE_DURATION = 10 * 60 * 1000; // 10분 (기온/미세먼지 빠르게 반영)
 
 const DEFAULT_LAT = 37.5665;
 const DEFAULT_LON = 126.978;
@@ -113,6 +114,7 @@ export async function getWeather(): Promise<WeatherData | null> {
       pm10: data.pm10 ?? 0,
       dustLevel: getDustLevel(data.pm25 ?? 0),
       dustSource: data.dustSource ?? '기상청·에어코리아(환경부)',
+      stationName: data.stationName ?? '',
       weatherDesc: data.weatherDesc ?? '',
       weatherIcon: data.weatherIcon ?? '',
       alerts: data.alerts ?? [],
