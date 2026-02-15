@@ -33,32 +33,31 @@ export default function GoalBanner() {
   const dateStr = format(now, 'M/d');
   const dayStr = format(now, 'EEE', { locale: ko });
 
-  // 날씨 텍스트: "☀4°" 또는 "🌧비 4°"
+  // 날씨 텍스트: "☀4°" 또는 "🌧비4°"
   const weatherText = weather
-    ? `${weather.weatherIcon}${weather.weatherDesc ? weather.weatherDesc + ' ' : ''}${weather.temperature}°`
+    ? `${weather.weatherIcon}${weather.weatherDesc || ''}${weather.temperature}°`
     : '';
 
   return (
     <View style={[styles.container, { backgroundColor: colors.card, borderBottomColor: colors.border, marginTop: -STATUS_BAR_HEIGHT, paddingTop: STATUS_BAR_HEIGHT + 4 }]}>
-      {/* 시간(왼쪽) + 날짜/날씨/미세먼지(오른쪽) 한 줄 */}
-      <View style={styles.topRow}>
-        <Text style={[styles.clockText, { color: colors.foreground }]}>{timeStr}</Text>
-        <View style={styles.infoRight}>
-          <Text style={[styles.dateText, { color: colors.mutedForeground }]}>{dateStr} {dayStr}</Text>
-          {weather && (
-            <>
-              <Text style={[styles.weatherText, { color: colors.foreground }]}>{weatherText}</Text>
-              <Text style={[styles.dustText, { color: colors.mutedForeground }]}>
-                미세먼지<Text style={{ color: getDustColor10(weather.pm10), fontWeight: '700' }}> {getDustLevel10(weather.pm10)}</Text>
-                {' '}초미세먼지<Text style={{ color: getDustColor(weather.pm25), fontWeight: '700' }}> {getDustLevel(weather.pm25)}</Text>
-              </Text>
-              {weather.alerts.length > 0 && (
-                <Text style={styles.alertText}>{weather.alerts.join(' ')}</Text>
-              )}
-            </>
-          )}
-        </View>
-      </View>
+      {/* 시간+날짜+날씨+미세먼지 전부 한 줄, 시계 크기 */}
+      <Text
+        style={[styles.mainLine, { color: colors.foreground }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.5}
+      >
+        {timeStr} {dateStr}{dayStr} {weatherText}
+        {weather && (
+          <>
+            {' '}<Text style={{ color: getDustColor10(weather.pm10) }}>미세{weather.pm10}{getDustLevel10(weather.pm10)}</Text>
+            {' '}<Text style={{ color: getDustColor(weather.pm25) }}>초미세{weather.pm25}{getDustLevel(weather.pm25)}</Text>
+          </>
+        )}
+      </Text>
+      {weather && weather.alerts.length > 0 && (
+        <Text style={styles.alertText}>{weather.alerts.join(' ')}</Text>
+      )}
 
       {/* 출처 */}
       {weather && (
@@ -98,35 +97,11 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     borderBottomWidth: 0.5,
   },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  clockText: {
+  mainLine: {
     fontSize: 32,
     fontWeight: '700',
     letterSpacing: -1,
-    marginRight: 10,
-  },
-  infoRight: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  dateText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  weatherText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  dustText: {
-    fontSize: 11,
-    fontWeight: '500',
+    marginBottom: 2,
   },
   alertText: {
     fontSize: 11,
