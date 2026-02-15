@@ -296,15 +296,12 @@ export default function SimpleHomeScreen() {
   };
 
   const ListHeader = () => (
-    <>
-      <GoalBanner />
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.countText, { color: colors.mutedForeground }]}>
-          {tasks.length > 0 ? `할일 ${tasks.length}개 남음` : '모두 완료!'}
-        </Text>
-        <Text style={[styles.hintText, { color: colors.mutedForeground }]}>꾹 눌러 드래그 | ← 밀어서 삭제</Text>
-      </View>
-    </>
+    <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      <Text style={[styles.countText, { color: colors.mutedForeground }]}>
+        {tasks.length > 0 ? `할일 ${tasks.length}개 남음` : '모두 완료!'}
+      </Text>
+      <Text style={[styles.hintText, { color: colors.mutedForeground }]}>꾹 눌러 드래그 | ← 밀어서 삭제</Text>
+    </View>
   );
 
   const calendarDays = getCalendarDays();
@@ -312,6 +309,7 @@ export default function SimpleHomeScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      <GoalBanner />
       <DraggableFlatList
         data={tasks}
         keyExtractor={(item) => item.id}

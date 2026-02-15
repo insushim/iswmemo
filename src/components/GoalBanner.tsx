@@ -47,11 +47,11 @@ export default function GoalBanner() {
         adjustsFontSizeToFit
         minimumFontScale={0.5}
       >
-        {timeStr} {dateStr}{dayStr} {weatherText}
+        {timeStr} {dateStr}({dayStr}) {weatherText}
         {weather && (
           <>
-            {' '}<Text style={{ color: getDustColor10(weather.pm10), fontSize: 18 }}>미세{weather.pm10}{getDustLevel10(weather.pm10)}</Text>
-            {' '}<Text style={{ color: getDustColor(weather.pm25), fontSize: 18 }}>초미세{weather.pm25}{getDustLevel(weather.pm25)}</Text>
+            {' '}<Text style={{ color: getDustColor10(weather.pm10), fontSize: 18 }}>미세 {weather.pm10} {getDustLevel10(weather.pm10)}</Text>
+            {'  '}<Text style={{ color: getDustColor(weather.pm25), fontSize: 18 }}>초미세 {weather.pm25} {getDustLevel(weather.pm25)}</Text>
           </>
         )}
       </Text>
@@ -92,7 +92,6 @@ export default function GoalBanner() {
 
 const styles = StyleSheet.create({
   container: {
-    marginHorizontal: -12,
     paddingHorizontal: 12,
     paddingTop: 4,
     paddingBottom: 8,
