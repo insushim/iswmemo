@@ -2,7 +2,7 @@
   "expo": {
     "name": "또박또박",
     "slug": "growthpad-mobile",
-    "version": "2.5.1",
+    "version": "2.5.2",
     "owner": "insushim",
     "orientation": "portrait",
     "updates": {
@@ -11,7 +11,7 @@
       "fallbackToCacheTimeout": 0,
       "url": "https://u.expo.dev/e0012d02-1743-443f-b934-e57dd252ba58"
     },
-    "runtimeVersion": "2.5.1",
+    "runtimeVersion": "2.5.2",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "scheme": "growthpad",
