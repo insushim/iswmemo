@@ -275,11 +275,11 @@ export default function ScheduleScreen() {
             disabled={isActive}
           >
             <View style={styles.scheduleCenter}>
-              <Text style={[styles.scheduleName, { color: past ? colors.mutedForeground : colors.foreground, fontSize: scaledFont(14), textAlign: 'center', textDecorationLine: past ? 'line-through' : 'none' }]}>
+              <Text style={[styles.scheduleName, { color: past ? colors.mutedForeground : colors.foreground, fontSize: scaledFont(14), textAlign, textDecorationLine: past ? 'line-through' : 'none' }]}>
                 {schedule.name}
               </Text>
               {meta?.place && (
-                <View style={[styles.placeRow, { justifyContent: 'center' }]}>
+                <View style={[styles.placeRow, textAlign === 'center' && { justifyContent: 'center' }]}>
                   <MapPin size={11} color={colors.mutedForeground} />
                   <Text style={[styles.placeText, { color: colors.mutedForeground, fontSize: scaledFont(11) }]}>{meta.place}</Text>
                 </View>
