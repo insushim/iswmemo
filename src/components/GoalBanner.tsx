@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { useTheme } from '../lib/theme';
 import { useGoalStore } from '../store/goals';
-import { getWeather, getDustColor, getDustColor10, WeatherData } from '../lib/weather';
+import { getWeather, getDustLevel, getDustLevel10, getDustColor, getDustColor10, WeatherData } from '../lib/weather';
 
 const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0;
 
@@ -48,16 +48,10 @@ export default function GoalBanner() {
           {weather && (
             <>
               <Text style={[styles.weatherText, { color: colors.foreground }]}>{weatherText}</Text>
-              <View style={styles.dustItem}>
-                <Text style={[styles.dustLabel, { color: colors.mutedForeground }]}>미세</Text>
-                <Text style={[styles.dustValue, { color: getDustColor10(weather.pm10) }]}>{weather.pm10}</Text>
-                <View style={[styles.dustDot, { backgroundColor: getDustColor10(weather.pm10) }]} />
-              </View>
-              <View style={styles.dustItem}>
-                <Text style={[styles.dustLabel, { color: colors.mutedForeground }]}>초미세</Text>
-                <Text style={[styles.dustValue, { color: getDustColor(weather.pm25) }]}>{weather.pm25}</Text>
-                <View style={[styles.dustDot, { backgroundColor: getDustColor(weather.pm25) }]} />
-              </View>
+              <Text style={[styles.dustText, { color: colors.mutedForeground }]}>
+                미세먼지<Text style={{ color: getDustColor10(weather.pm10), fontWeight: '700' }}> {getDustLevel10(weather.pm10)}</Text>
+                {' '}초미세먼지<Text style={{ color: getDustColor(weather.pm25), fontWeight: '700' }}> {getDustLevel(weather.pm25)}</Text>
+              </Text>
               {weather.alerts.length > 0 && (
                 <Text style={styles.alertText}>{weather.alerts.join(' ')}</Text>
               )}
@@ -130,23 +124,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  dustItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  dustLabel: {
-    fontSize: 10,
-    fontWeight: '500',
-  },
-  dustValue: {
+  dustText: {
     fontSize: 11,
-    fontWeight: '700',
-  },
-  dustDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    fontWeight: '500',
   },
   alertText: {
     fontSize: 11,

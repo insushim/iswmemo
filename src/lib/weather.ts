@@ -16,9 +16,9 @@ export interface WeatherData {
 // PM2.5 기준 초미세먼지 등급
 const getDustLevel = (pm25: number): string => {
   if (pm25 <= 15) return '좋음';
-  if (pm25 <= 35) return '보통';
-  if (pm25 <= 75) return '나쁨';
-  return '매우나쁨';
+  if (pm25 <= 35) return '나쁨';
+  if (pm25 <= 75) return '많이나쁨';
+  return '최악';
 };
 
 const getDustColor = (pm25: number): string => {
@@ -29,6 +29,13 @@ const getDustColor = (pm25: number): string => {
 };
 
 // PM10 기준 미세먼지 등급
+const getDustLevel10 = (pm10: number): string => {
+  if (pm10 <= 30) return '좋음';
+  if (pm10 <= 80) return '나쁨';
+  if (pm10 <= 150) return '많이나쁨';
+  return '최악';
+};
+
 const getDustColor10 = (pm10: number): string => {
   if (pm10 <= 30) return '#22c55e';
   if (pm10 <= 80) return '#3b82f6';
@@ -36,7 +43,7 @@ const getDustColor10 = (pm10: number): string => {
   return '#ef4444';
 };
 
-export { getDustColor, getDustColor10 };
+export { getDustLevel, getDustLevel10, getDustColor, getDustColor10 };
 
 // === 캐시 ===
 let cachedWeather: WeatherData | null = null;
