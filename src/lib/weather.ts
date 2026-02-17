@@ -102,8 +102,9 @@ export async function getWeather(): Promise<WeatherData | null> {
             sido = getSidoName(region);
             // 시군구명 (subregion: "김제시", "함평군" 등)
             city = g.subregion || '';
-            // 읍면동명 (city/district: "요촌동", "함평읍" 등) - 측정소 이름 매칭용
-            dong = g.city || g.district || '';
+            // 읍면동명 - Android: district=subLocality(동/읍/면), city=locality(시군구와 동일할 수 있음)
+            // district를 우선 사용하고, city는 subregion과 다를 때만 폴백
+            dong = g.district || (g.city && g.city !== g.subregion ? g.city : '') || '';
           }
         } catch {}
       }
