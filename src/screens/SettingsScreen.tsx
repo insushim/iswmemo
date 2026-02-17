@@ -41,6 +41,7 @@ import {
   ThemeColorOption, THEME_COLOR_OPTIONS,
 } from '../store/settings';
 import GoalBanner from '../components/GoalBanner';
+import { APP_VERSION } from '../lib/config';
 
 const { AutoLaunchModule } = NativeModules;
 
@@ -357,7 +358,7 @@ export default function SettingsScreen() {
 
         <View style={styles.appInfo}>
           <Text style={[styles.appName, { color: colors.mutedForeground }]}>또박또박</Text>
-          <Text style={[styles.appVersion, { color: colors.mutedForeground }]}>버전 2.2.0</Text>
+          <Text style={[styles.appVersion, { color: colors.mutedForeground }]}>버전 {APP_VERSION}</Text>
         </View>
       </ScrollView>
 

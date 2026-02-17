@@ -98,13 +98,25 @@ export async function getWeather(): Promise<WeatherData | null> {
           const geocode = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
           if (geocode.length > 0) {
             const g = geocode[0];
+            // DEBUG: 전체 geocode 필드 로그
+            console.log('GEOCODE:', JSON.stringify({
+              region: g.region, subregion: g.subregion, city: g.city,
+              district: g.district, street: g.street, name: g.name,
+              streetNumber: g.streetNumber, postalCode: g.postalCode,
+            }));
             const region = g.region || g.subregion || '';
             sido = getSidoName(region);
             // 시군구명 (subregion: "김제시", "함평군" 등)
             city = g.subregion || '';
-            // 읍면동명 - Android: district=subLocality(동/읍/면), city=locality(시군구와 동일할 수 있음)
-            // district를 우선 사용하고, city는 subregion과 다를 때만 폴백
-            dong = g.district || (g.city && g.city !== g.subregion ? g.city : '') || '';
+            // 읍면동명 추출 (Android 기기마다 필드가 다를 수 있음)
+            // district=subLocality(동/읍/면), name=featureName, street=thoroughfare
+            // 우선순위: district → city(subregion과 다를때) → name(동/읍/면으로 끝날때)
+            dong = g.district
+              || (g.city && g.city !== g.subregion ? g.city : '')
+              || (g.name && /[동읍면리가]$/.test(g.name) ? g.name : '')
+              || (g.street && /[동읍면리가]$/.test(g.street) ? g.street : '')
+              || '';
+            console.log(`WEATHER: sido=${sido}, city=${city}, dong=${dong}, raw={district=${g.district},city=${g.city},name=${g.name},street=${g.street}}`);
           }
         } catch {}
       }
@@ -116,13 +128,17 @@ export async function getWeather(): Promise<WeatherData | null> {
 
     const data = await res.json();
 
+    // DEBUG: 서버에서 받은 파라미터 + 모바일에서 보낸 dong 확인 (임시)
+    const params = data._params || {};
+    const debugStation = `${data.stationName}(동:${dong||'빈값'})`;
+
     cachedWeather = {
       temperature: data.temperature ?? 0,
       pm25: data.pm25 ?? 0,
       pm10: data.pm10 ?? 0,
       dustLevel: getDustLevel(data.pm25 ?? 0),
-      dustSource: data.dustSource ?? '기상청·에어코리아(환경부)',
-      stationName: data.stationName ?? '',
+      dustSource: `v2.7.5 동=${dong||'없음'}`,
+      stationName: debugStation,
       weatherDesc: data.weatherDesc ?? '',
       weatherIcon: data.weatherIcon ?? '',
       alerts: data.alerts ?? [],
