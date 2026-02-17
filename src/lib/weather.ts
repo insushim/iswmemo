@@ -89,7 +89,7 @@ export async function getWeather(): Promise<WeatherData | null> {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         lat = loc.coords.latitude;
         lon = loc.coords.longitude;
 
