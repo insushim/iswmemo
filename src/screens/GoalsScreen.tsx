@@ -194,7 +194,7 @@ export default function GoalsScreen() {
         ListHeaderComponent={
           filteredGoals.length > 0 ? (
             <View style={styles.hintRow}>
-              <Text style={[styles.hintText, { color: colors.mutedForeground }]}>꾹 눌러 드래그 | ← 밀어서 삭제</Text>
+              <Text style={[styles.hintText, { color: colors.mutedForeground }]}>→ 복사 | ← 삭제 | 꾹 드래그</Text>
             </View>
           ) : null
         }

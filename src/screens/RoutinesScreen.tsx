@@ -178,7 +178,7 @@ export default function RoutinesScreen() {
           </View>
         }
         ListHeaderComponent={
-          routines.length > 0 ? <Text style={[styles.hintText, { color: colors.mutedForeground }]}>꾹 눌러 드래그 | ← 밀어서 삭제</Text> : null
+          routines.length > 0 ? <Text style={[styles.hintText, { color: colors.mutedForeground }]}>→ 복사 | ← 삭제 | 꾹 드래그</Text> : null
         }
         ListFooterComponent={<View style={{ height: 20 }} />}
         renderItem={({ item: routine, drag, isActive }: RenderItemParams<Routine>) => {

@@ -199,7 +199,7 @@ export default function NotesScreen() {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <GoalBanner />
       {/* 헤더 */}
       <View style={styles.header}>
@@ -233,11 +233,12 @@ export default function NotesScreen() {
         refreshing={refreshing}
         onRefresh={onRefresh}
         onDragEnd={({ data }: { data: Note[] }) => setNotes(data)}
+        style={{ flex: 1 }}
         contentContainerStyle={styles.listContainer}
         ListHeaderComponent={
           filteredNotes.length > 0 ? (
             <View style={styles.hintRow}>
-              <Text style={[styles.hintText, { color: colors.mutedForeground }]}>꾹 눌러 드래그 | ← 밀어서 삭제</Text>
+              <Text style={[styles.hintText, { color: colors.mutedForeground }]}>→ 복사 | ← 삭제 | 꾹 드래그</Text>
             </View>
           ) : null
         }

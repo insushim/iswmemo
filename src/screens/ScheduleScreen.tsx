@@ -2,7 +2,8 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Modal, Alert, Animated, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { Plus, X, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Share2, Bell, BellOff } from 'lucide-react-native';
+import { Plus, X, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Share2, Bell, BellOff, Copy } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import { format, isSameDay, parseISO, addDays, subDays, isBefore, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import * as SecureStore from 'expo-secure-store';
@@ -245,6 +246,67 @@ export default function ScheduleScreen() {
     Share.share({ message });
   };
 
+  const handleShareToday = async () => {
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    const dayStr = format(selectedDate, 'yyyy년 M월 d일 (EEEE)', { locale: ko });
+    let message = `📋 또박또박 - ${dayStr}\n`;
+
+    // 이 날 일정
+    if (allDisplayed.length > 0) {
+      message += `\n📅 일정\n`;
+      allDisplayed.forEach(s => {
+        const meta = parseScheduleMeta(s.description);
+        const time = s.startTime ? formatTime12(s.startTime) : '';
+        const place = meta?.place ? ` (${meta.place})` : '';
+        message += `• ${time ? time + ' ' : ''}${s.name}${place}\n`;
+      });
+    }
+
+    // 할 일 가져오기
+    try {
+      const tasksRes = await api.getTasks();
+      const tasks = (tasksRes || []).filter((t: any) => !t.isCompleted);
+      if (tasks.length > 0) {
+        message += `\n✅ 할 일\n`;
+        tasks.forEach((t: any) => { message += `• ${t.title}\n`; });
+      }
+    } catch {}
+
+    // 습관 가져오기
+    try {
+      const habitsRes = await api.getHabits();
+      const habits = habitsRes || [];
+      if (habits.length > 0) {
+        message += `\n⚡ 습관\n`;
+        habits.forEach((h: any) => {
+          const done = h.logs?.some((l: any) => l.date?.split('T')[0] === dateStr);
+          message += `${done ? '✅' : '⬜'} ${h.name}${h.currentStreak ? ` (${h.currentStreak}일째)` : ''}\n`;
+        });
+      }
+    } catch {}
+
+    message += `\n또박또박 앱에서 확인하세요!`;
+    Share.share({ message });
+  };
+
+  const renderLeftActions = (schedule: Routine) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const scale = dragX.interpolate({ inputRange: [0, 80], outputRange: [0.5, 1], extrapolate: 'clamp' });
+    return (
+      <Animated.View style={[styles.swipeCopy, { transform: [{ scale }] }]}>
+        <TouchableOpacity style={styles.swipeCopyBtn} onPress={() => {
+          const meta = parseScheduleMeta(schedule.description);
+          const time = schedule.startTime ? formatTime12(schedule.startTime) : '';
+          const place = meta?.place ? ` (${meta.place})` : '';
+          Clipboard.setStringAsync(`${time ? time + ' ' : ''}${schedule.name}${place}`);
+          swipeableRefs.current.get(schedule.id)?.close();
+        }}>
+          <Copy size={20} color="#fff" />
+          <Text style={styles.swipeCopyText}>복사</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
   const renderRightActions = (schedule: Routine) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
     const scale = dragX.interpolate({ inputRange: [-80, 0], outputRange: [1, 0.5], extrapolate: 'clamp' });
     return (
@@ -279,8 +341,11 @@ export default function ScheduleScreen() {
       <ScaleDecorator>
         <Swipeable
           ref={(ref) => { if (ref) swipeableRefs.current.set(schedule.id, ref); }}
+          renderLeftActions={renderLeftActions(schedule)}
           renderRightActions={renderRightActions(schedule)}
+          overshootLeft={false}
           overshootRight={false}
+          leftThreshold={15}
           rightThreshold={15}
         >
           <TouchableOpacity
@@ -322,9 +387,14 @@ export default function ScheduleScreen() {
       <GoalBanner />
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.foreground }]}>일정</Text>
-        <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={openAddModal}>
-          <Plus size={18} color="#fff" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.primary }]} onPress={handleShareToday}>
+            <Share2 size={16} color={colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={openAddModal}>
+            <Plus size={18} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 날짜 네비게이션 */}
@@ -412,7 +482,7 @@ export default function ScheduleScreen() {
         onRefresh={onRefresh}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
-          allDisplayed.length > 0 ? <Text style={[styles.hintText, { color: colors.mutedForeground }]}>꾹 눌러 드래그 | ← 밀어서 삭제</Text> : null
+          allDisplayed.length > 0 ? <Text style={[styles.hintText, { color: colors.mutedForeground }]}>→ 복사 | ← 삭제 | 꾹 드래그</Text> : null
         }
         ListEmptyComponent={
           <View style={[styles.empty, { backgroundColor: colors.card }]}>
@@ -633,6 +703,9 @@ const styles = StyleSheet.create({
   swipeDelete: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 6 },
   swipeDeleteBtn: { backgroundColor: '#ef4444', borderRadius: 10, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
   swipeDeleteText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
+  swipeCopy: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 6 },
+  swipeCopyBtn: { backgroundColor: '#3b82f6', borderRadius: 10, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
+  swipeCopyText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 32, maxHeight: '90%' },

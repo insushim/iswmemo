@@ -201,7 +201,7 @@ export default function HabitsScreen() {
         }
         ListFooterComponent={<View style={{ height: 20 }} />}
         ListHeaderComponent={
-          habits.length > 0 ? <Text style={[styles.hintText, { color: colors.mutedForeground }]}>꾹 눌러 드래그 | ← 밀어서 삭제</Text> : null
+          habits.length > 0 ? <Text style={[styles.hintText, { color: colors.mutedForeground }]}>→ 복사 | ← 삭제 | 꾹 드래그</Text> : null
         }
         renderItem={({ item: habit, drag, isActive }: RenderItemParams<Habit>) => {
           const isDone = habit.completedDates?.includes(today);
