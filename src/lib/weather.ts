@@ -98,12 +98,6 @@ export async function getWeather(): Promise<WeatherData | null> {
           const geocode = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
           if (geocode.length > 0) {
             const g = geocode[0];
-            // DEBUG: 전체 geocode 필드 로그
-            console.log('GEOCODE:', JSON.stringify({
-              region: g.region, subregion: g.subregion, city: g.city,
-              district: g.district, street: g.street, name: g.name,
-              streetNumber: g.streetNumber, postalCode: g.postalCode,
-            }));
             const region = g.region || g.subregion || '';
             sido = getSidoName(region);
             // 시군구명 (subregion: "김제시", "함평군" 등)
@@ -116,7 +110,7 @@ export async function getWeather(): Promise<WeatherData | null> {
               || (g.name && /[동읍면리가]$/.test(g.name) ? g.name : '')
               || (g.street && /[동읍면리가]$/.test(g.street) ? g.street : '')
               || '';
-            console.log(`WEATHER: sido=${sido}, city=${city}, dong=${dong}, raw={district=${g.district},city=${g.city},name=${g.name},street=${g.street}}`);
+            console.log(`WEATHER: sido=${sido}, city=${city}, dong=${dong}`);
           }
         } catch {}
       }
@@ -128,17 +122,13 @@ export async function getWeather(): Promise<WeatherData | null> {
 
     const data = await res.json();
 
-    // DEBUG: 서버에서 받은 파라미터 + 모바일에서 보낸 dong 확인 (임시)
-    const params = data._params || {};
-    const debugStation = `${data.stationName}(동:${dong||'빈값'})`;
-
     cachedWeather = {
       temperature: data.temperature ?? 0,
       pm25: data.pm25 ?? 0,
       pm10: data.pm10 ?? 0,
       dustLevel: getDustLevel(data.pm25 ?? 0),
-      dustSource: `v2.7.5 동=${dong||'없음'}`,
-      stationName: debugStation,
+      dustSource: data.dustSource ?? '기상청·에어코리아(환경부)',
+      stationName: data.stationName ?? '',
       weatherDesc: data.weatherDesc ?? '',
       weatherIcon: data.weatherIcon ?? '',
       alerts: data.alerts ?? [],
