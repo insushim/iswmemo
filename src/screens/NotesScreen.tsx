@@ -227,14 +227,14 @@ export default function NotesScreen() {
       </View>
 
       {/* 메모 목록 */}
+      <View style={{ flex: 1 }}>
       <DraggableFlatList
         data={filteredNotes}
         keyExtractor={(item) => item.id}
         refreshing={refreshing}
         onRefresh={onRefresh}
         onDragEnd={({ data }: { data: Note[] }) => setNotes(data)}
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.listContainer}
+        contentContainerStyle={{ paddingHorizontal: 20 }}
         ListHeaderComponent={
           filteredNotes.length > 0 ? (
             <View style={styles.hintRow}>
@@ -281,7 +281,9 @@ export default function NotesScreen() {
             </Swipeable>
           </ScaleDecorator>
         )}
+        ListFooterComponent={<View style={{ height: 100 }} />}
       />
+      </View>
 
       {/* 추가/수정 모달 */}
       <Modal visible={showModal} animationType="slide" transparent>

@@ -83,6 +83,7 @@ export async function getWeather(): Promise<WeatherData | null> {
   try {
     let lat = DEFAULT_LAT, lon = DEFAULT_LON;
     let sido = '서울';
+    let city = '';
 
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -91,18 +92,20 @@ export async function getWeather(): Promise<WeatherData | null> {
         lat = loc.coords.latitude;
         lon = loc.coords.longitude;
 
-        // reverse geocode → 시도명
+        // reverse geocode → 시도명 + 시군구명
         try {
           const geocode = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
           if (geocode.length > 0) {
             const region = geocode[0].region || geocode[0].subregion || '';
             sido = getSidoName(region);
+            // 시군구명 추출 (subregion: "함평군", city: "함평읍" 등)
+            city = geocode[0].subregion || geocode[0].city || '';
           }
         } catch {}
       }
     } catch {}
 
-    const url = `${API_URL}/api/weather?lat=${lat}&lon=${lon}&sido=${encodeURIComponent(sido)}`;
+    const url = `${API_URL}/api/weather?lat=${lat}&lon=${lon}&sido=${encodeURIComponent(sido)}&city=${encodeURIComponent(city)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 

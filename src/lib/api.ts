@@ -86,6 +86,7 @@ interface UpdateGoalPayload {
 interface CreateNotePayload {
   title: string;
   content?: string;
+  contentType?: 'text' | 'markdown' | 'rich';
   color?: string | null;
 }
 

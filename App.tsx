@@ -11,6 +11,7 @@ import { useGoalStore } from './src/store/goals';
 import { useSettingsStore } from './src/store/settings';
 import { requestNotificationPermission } from './src/lib/taskAlarm';
 import { promptAutoStart } from './src/lib/autostart';
+import { checkForUpdate } from './src/lib/appUpdate';
 
 const { AutoLaunchModule } = NativeModules;
 
@@ -45,6 +46,8 @@ export default function App() {
         // 기존 expo 잔여 알림 모두 정리 (네이티브 알람은 영향 없음)
         await Notifications.cancelAllScheduledNotificationsAsync();
         await Notifications.dismissAllNotificationsAsync();
+        // 업데이트 확인 (백그라운드)
+        checkForUpdate();
       } catch (error) {
         console.error('Init failed:', error);
       } finally {

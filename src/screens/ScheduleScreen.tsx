@@ -246,46 +246,22 @@ export default function ScheduleScreen() {
     Share.share({ message });
   };
 
-  const handleShareToday = async () => {
-    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+  const handleShareToday = () => {
     const dayStr = format(selectedDate, 'yyyy년 M월 d일 (EEEE)', { locale: ko });
-    let message = `📋 또박또박 - ${dayStr}\n`;
+    let message = `📅 또박또박 - ${dayStr} 일정\n`;
 
-    // 이 날 일정
     if (allDisplayed.length > 0) {
-      message += `\n📅 일정\n`;
       allDisplayed.forEach(s => {
         const meta = parseScheduleMeta(s.description);
         const time = s.startTime ? formatTime12(s.startTime) : '';
-        const place = meta?.place ? ` (${meta.place})` : '';
-        message += `• ${time ? time + ' ' : ''}${s.name}${place}\n`;
+        const place = meta?.place ? ` @ ${meta.place}` : '';
+        message += `\n• ${time ? time + ' ' : ''}${s.name}${place}`;
       });
+    } else {
+      message += `\n일정이 없습니다.`;
     }
 
-    // 할 일 가져오기
-    try {
-      const tasksRes = await api.getTasks();
-      const tasks = (tasksRes || []).filter((t: any) => !t.isCompleted);
-      if (tasks.length > 0) {
-        message += `\n✅ 할 일\n`;
-        tasks.forEach((t: any) => { message += `• ${t.title}\n`; });
-      }
-    } catch {}
-
-    // 습관 가져오기
-    try {
-      const habitsRes = await api.getHabits();
-      const habits = habitsRes || [];
-      if (habits.length > 0) {
-        message += `\n⚡ 습관\n`;
-        habits.forEach((h: any) => {
-          const done = h.logs?.some((l: any) => l.date?.split('T')[0] === dateStr);
-          message += `${done ? '✅' : '⬜'} ${h.name}${h.currentStreak ? ` (${h.currentStreak}일째)` : ''}\n`;
-        });
-      }
-    } catch {}
-
-    message += `\n또박또박 앱에서 확인하세요!`;
+    message += `\n\n또박또박 앱에서 확인하세요!`;
     Share.share({ message });
   };
 
