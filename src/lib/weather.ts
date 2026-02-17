@@ -84,6 +84,7 @@ export async function getWeather(): Promise<WeatherData | null> {
     let lat = DEFAULT_LAT, lon = DEFAULT_LON;
     let sido = '서울';
     let city = '';
+    let dong = '';
 
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -92,20 +93,23 @@ export async function getWeather(): Promise<WeatherData | null> {
         lat = loc.coords.latitude;
         lon = loc.coords.longitude;
 
-        // reverse geocode → 시도명 + 시군구명
+        // reverse geocode → 시도명 + 시군구명 + 읍면동명
         try {
           const geocode = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
           if (geocode.length > 0) {
-            const region = geocode[0].region || geocode[0].subregion || '';
+            const g = geocode[0];
+            const region = g.region || g.subregion || '';
             sido = getSidoName(region);
-            // 시군구명 추출 (subregion: "함평군", city: "함평읍" 등)
-            city = geocode[0].subregion || geocode[0].city || '';
+            // 시군구명 (subregion: "김제시", "함평군" 등)
+            city = g.subregion || '';
+            // 읍면동명 (city/district: "요촌동", "함평읍" 등) - 측정소 이름 매칭용
+            dong = g.city || g.district || '';
           }
         } catch {}
       }
     } catch {}
 
-    const url = `${API_URL}/api/weather?lat=${lat}&lon=${lon}&sido=${encodeURIComponent(sido)}&city=${encodeURIComponent(city)}`;
+    const url = `${API_URL}/api/weather?lat=${lat}&lon=${lon}&sido=${encodeURIComponent(sido)}&city=${encodeURIComponent(city)}&dong=${encodeURIComponent(dong)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
