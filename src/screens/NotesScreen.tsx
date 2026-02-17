@@ -110,7 +110,7 @@ export default function NotesScreen() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      setNotes(prev => [...prev, tempNote]);
+      setNotes(prev => [tempNote, ...prev]);
     }
 
     // 백그라운드에서 서버 동기화
@@ -118,14 +118,15 @@ export default function NotesScreen() {
       if (isEditing && editId) {
         await api.updateNote(editId, { title: autoTitle, content, color });
       } else {
-        const created = await api.createNote({ title: autoTitle, content, color }) as any;
+        const created = await api.createNote({ title: autoTitle, content, contentType: 'text', color }) as any;
         if (created?.id && tempId) {
           setNotes(prev => prev.map(n => n.id === tempId ? { ...n, id: created.id } : n));
         }
       }
-    } catch (error) {
-      Alert.alert('오류', '메모 저장에 실패했습니다');
-      fetchNotes();
+    } catch (error: any) {
+      console.error('Note save error:', error);
+      // 서버에 생성됐을 수 있으므로, 다시 불러와서 동기화
+      try { await fetchNotes(); } catch {}
     } finally {
       setSaving(false);
     }
@@ -395,7 +396,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 80,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -432,7 +433,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    maxHeight: '80%',
+    maxHeight: '92%',
   },
   modalHeader: {
     flexDirection: 'row',

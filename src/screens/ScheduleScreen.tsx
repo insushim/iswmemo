@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Modal,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Plus, X, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Share2, Bell, BellOff } from 'lucide-react-native';
-import { format, isSameDay, parseISO, addDays, subDays, isBefore } from 'date-fns';
+import { format, isSameDay, parseISO, addDays, subDays, isBefore, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import * as SecureStore from 'expo-secure-store';
 import { useTheme } from '../lib/theme';
@@ -17,6 +17,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 
 const SCHEDULE_CACHE_KEY = 'cached_schedules_v1';
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
 interface ScheduleMeta {
   date: string; // YYYY-MM-DD
@@ -58,6 +59,9 @@ export default function ScheduleScreen() {
   const [eventIsAM, setEventIsAM] = useState(true);
   const [eventNotify, setEventNotify] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [eventCalendarMonth, setEventCalendarMonth] = useState(new Date());
+  const [showTopCalendar, setShowTopCalendar] = useState(false);
+  const [topCalendarMonth, setTopCalendarMonth] = useState(new Date());
   const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
   const hasLoadedRef = useRef(false);
 
@@ -113,11 +117,21 @@ export default function ScheduleScreen() {
   // 날짜가 없는 일정 (레거시 루틴)
   const legacySchedules = schedules.filter(s => !parseScheduleMeta(s.description));
 
+  const getCalendarDays = (month: Date) => {
+    const start = startOfMonth(month);
+    const end = endOfMonth(month);
+    const days = eachDayOfInterval({ start, end });
+    const startDayOfWeek = getDay(start);
+    const paddingDays = Array.from({ length: startDayOfWeek }, () => null);
+    return [...paddingDays, ...days];
+  };
+
   const openAddModal = () => {
     setEditingSchedule(null);
     setEventName('');
     setEventPlace('');
     setEventDate(selectedDate);
+    setEventCalendarMonth(selectedDate);
     const now = new Date();
     const { hour, am } = from24Hour(now.getHours());
     setEventHour(hour);
@@ -132,7 +146,9 @@ export default function ScheduleScreen() {
     setEventName(schedule.name);
     const meta = parseScheduleMeta(schedule.description);
     setEventPlace(meta?.place || '');
-    setEventDate(meta?.date ? parseISO(meta.date) : new Date());
+    const ed = meta?.date ? parseISO(meta.date) : new Date();
+    setEventDate(ed);
+    setEventCalendarMonth(ed);
     setEventNotify(meta?.notify !== false);
     if (schedule.startTime) {
       const [h, m] = schedule.startTime.split(':');
@@ -169,7 +185,7 @@ export default function ScheduleScreen() {
     if (!isEditing) {
       tempId = `temp-${Date.now()}`;
       const temp = { id: tempId, ...payload, items: [], completedItemsToday: [], isActive: true, endTime: null, createdAt: new Date().toISOString() } as any;
-      setSchedules(prev => [...prev, temp]);
+      setSchedules(prev => [temp, ...prev]);
     } else {
       setSchedules(prev => prev.map(s => s.id === editId ? { ...s, ...payload } : s));
     }
@@ -313,18 +329,75 @@ export default function ScheduleScreen() {
 
       {/* 날짜 네비게이션 */}
       <View style={[styles.dateNav, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => setSelectedDate(subDays(selectedDate, 1))}>
+        <TouchableOpacity onPress={() => { setSelectedDate(subDays(selectedDate, 1)); setShowTopCalendar(false); }}>
           <ChevronLeft size={22} color={colors.foreground} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setSelectedDate(new Date())}>
+        <TouchableOpacity onPress={() => { setShowTopCalendar(!showTopCalendar); setTopCalendarMonth(selectedDate); }}>
           <Text style={[styles.dateNavText, { color: colors.foreground }]}>
             {isSameDay(selectedDate, new Date()) ? '오늘' : format(selectedDate, 'M월 d일 (EEE)', { locale: ko })}
+            {showTopCalendar ? ' ▲' : ' ▼'}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setSelectedDate(addDays(selectedDate, 1))}>
+        <TouchableOpacity onPress={() => { setSelectedDate(addDays(selectedDate, 1)); setShowTopCalendar(false); }}>
           <ChevronRight size={22} color={colors.foreground} />
         </TouchableOpacity>
       </View>
+
+      {/* 펼침 달력 */}
+      {showTopCalendar && (
+        <View style={[styles.topCalendar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <View style={styles.calendarHeader}>
+            <TouchableOpacity onPress={() => setTopCalendarMonth(subMonths(topCalendarMonth, 1))}>
+              <ChevronLeft size={18} color={colors.foreground} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { setSelectedDate(new Date()); setTopCalendarMonth(new Date()); }}>
+              <Text style={[styles.calendarMonthText, { color: colors.foreground, fontSize: 14 }]}>
+                {format(topCalendarMonth, 'yyyy년 M월', { locale: ko })}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setTopCalendarMonth(addMonths(topCalendarMonth, 1))}>
+              <ChevronRight size={18} color={colors.foreground} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.weekdayRow}>
+            {WEEKDAYS.map((d, i) => (
+              <Text key={i} style={[styles.weekdayText, { color: i === 0 ? '#ef4444' : i === 6 ? '#3b82f6' : colors.mutedForeground }]}>{d}</Text>
+            ))}
+          </View>
+          <View style={styles.calendarGrid}>
+            {getCalendarDays(topCalendarMonth).map((day, i) => {
+              if (!day) return <View key={`pad-${i}`} style={styles.calendarCell} />;
+              const isSelected = isSameDay(day, selectedDate);
+              const isToday = isSameDay(day, new Date());
+              const dayOfWeek = getDay(day);
+              // 해당 날짜에 일정 있는지 확인
+              const hasEvent = schedules.some(s => {
+                const m = parseScheduleMeta(s.description);
+                return m?.date === format(day, 'yyyy-MM-dd');
+              });
+              return (
+                <TouchableOpacity
+                  key={day.toISOString()}
+                  style={[
+                    styles.calendarCell,
+                    isSelected && { backgroundColor: colors.primary },
+                    isToday && !isSelected && { borderColor: colors.primary },
+                  ]}
+                  onPress={() => { setSelectedDate(day); setShowTopCalendar(false); }}
+                >
+                  <Text style={[
+                    styles.calendarDayText,
+                    { color: isSelected ? '#fff' : dayOfWeek === 0 ? '#ef4444' : dayOfWeek === 6 ? '#3b82f6' : colors.foreground },
+                  ]}>
+                    {format(day, 'd')}
+                  </Text>
+                  {hasEvent && !isSelected && <View style={[styles.eventDot, { backgroundColor: colors.primary }]} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
 
       <DraggableFlatList
         data={allDisplayed}
@@ -385,18 +458,51 @@ export default function ScheduleScreen() {
                 />
               </View>
 
-              {/* 날짜 선택 (간단한 좌우 네비) */}
+              {/* 달력으로 날짜 선택 */}
               <Text style={[styles.label, { color: colors.foreground }]}>날짜</Text>
-              <View style={[styles.datePickerRow, { borderColor: colors.border }]}>
-                <TouchableOpacity onPress={() => setEventDate(subDays(eventDate, 1))}>
-                  <ChevronLeft size={20} color={colors.foreground} />
-                </TouchableOpacity>
-                <Text style={[styles.datePickerText, { color: colors.foreground }]}>
-                  {format(eventDate, 'yyyy년 M월 d일 (EEE)', { locale: ko })}
-                </Text>
-                <TouchableOpacity onPress={() => setEventDate(addDays(eventDate, 1))}>
-                  <ChevronRight size={20} color={colors.foreground} />
-                </TouchableOpacity>
+              <View style={styles.calendarSection}>
+                <View style={styles.calendarHeader}>
+                  <TouchableOpacity onPress={() => setEventCalendarMonth(subMonths(eventCalendarMonth, 1))}>
+                    <ChevronLeft size={20} color={colors.foreground} />
+                  </TouchableOpacity>
+                  <Text style={[styles.calendarMonthText, { color: colors.foreground }]}>
+                    {format(eventCalendarMonth, 'yyyy년 M월', { locale: ko })}
+                  </Text>
+                  <TouchableOpacity onPress={() => setEventCalendarMonth(addMonths(eventCalendarMonth, 1))}>
+                    <ChevronRight size={20} color={colors.foreground} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.weekdayRow}>
+                  {WEEKDAYS.map((d, i) => (
+                    <Text key={i} style={[styles.weekdayText, { color: i === 0 ? '#ef4444' : i === 6 ? '#3b82f6' : colors.mutedForeground }]}>{d}</Text>
+                  ))}
+                </View>
+                <View style={styles.calendarGrid}>
+                  {getCalendarDays(eventCalendarMonth).map((day, i) => {
+                    if (!day) return <View key={`pad-${i}`} style={styles.calendarCell} />;
+                    const isSelected = isSameDay(day, eventDate);
+                    const isToday = isSameDay(day, new Date());
+                    const dayOfWeek = getDay(day);
+                    return (
+                      <TouchableOpacity
+                        key={day.toISOString()}
+                        style={[
+                          styles.calendarCell,
+                          isSelected && { backgroundColor: colors.primary, borderColor: colors.primary },
+                          isToday && !isSelected && { borderColor: colors.primary },
+                        ]}
+                        onPress={() => setEventDate(day)}
+                      >
+                        <Text style={[
+                          styles.calendarDayText,
+                          { color: isSelected ? '#fff' : dayOfWeek === 0 ? '#ef4444' : dayOfWeek === 6 ? '#3b82f6' : colors.foreground },
+                        ]}>
+                          {format(day, 'd')}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
 
               {/* 시간 선택 - 휠 방식 */}
@@ -534,8 +640,16 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 16, fontWeight: '600' },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, marginBottom: 12 },
   label: { fontSize: 13, fontWeight: '500', marginBottom: 6 },
-  datePickerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderRadius: 10, marginBottom: 4 },
-  datePickerText: { fontSize: 14, fontWeight: '500' },
+  calendarSection: { marginBottom: 8 },
+  calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingHorizontal: 4 },
+  calendarMonthText: { fontSize: 15, fontWeight: '600' },
+  weekdayRow: { flexDirection: 'row', marginBottom: 4 },
+  weekdayText: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '500' },
+  calendarGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  calendarCell: { width: `${100 / 7}%`, height: 36, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'transparent', borderRadius: 18 },
+  calendarDayText: { fontSize: 13, fontWeight: '500' },
+  topCalendar: { paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 0.5 },
+  eventDot: { width: 4, height: 4, borderRadius: 2, marginTop: 1 },
   wheelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10 },
   wheelColumn: { alignItems: 'center' },
   wheelBox: { borderWidth: 1, borderRadius: 10, overflow: 'hidden', alignItems: 'center', width: 72 },

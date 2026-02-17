@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Modal, Keyboard, Animated, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Modal, Keyboard, Animated, ScrollView, Share } from 'react-native';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Swipeable, TouchableOpacity as GHTouchable } from 'react-native-gesture-handler';
-import { Plus, X, Calendar, Clock, AlertCircle, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Copy } from 'lucide-react-native';
+import { Plus, X, Calendar, Clock, AlertCircle, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Copy, Share2 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { format, addDays, isBefore, parseISO, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -146,8 +146,8 @@ export default function SimpleHomeScreen() {
     let tempId = '';
     if (!isEditing) {
       tempId = `temp-${Date.now()}`;
-      const tempTask = { id: tempId, ...td, completed: false, createdAt: new Date().toISOString() } as any;
-      setTasks(prev => [...prev, tempTask]);
+      const tempTask = { id: tempId, ...td, isCompleted: false, createdAt: new Date().toISOString() } as any;
+      setTasks(prev => [tempTask, ...prev]);
     } else {
       setTasks(prev => prev.map(t => t.id === editId ? { ...t, ...td } : t));
     }
@@ -159,24 +159,30 @@ export default function SimpleHomeScreen() {
     try {
       if (isEditing && editId) {
         await api.updateTask(editId, td);
-        if (taskType === 'deadline' && td.dueDate && taskAlarmEnabled) {
-          await scheduleTaskAlarm(editId, td.title, new Date(td.dueDate));
-        } else {
-          await cancelTaskAlarm(editId);
-        }
+        // 알람은 별도 try/catch (실패해도 할일은 이미 저장됨)
+        try {
+          if (taskType === 'deadline' && td.dueDate && taskAlarmEnabled) {
+            await scheduleTaskAlarm(editId, td.title, new Date(td.dueDate));
+          } else {
+            await cancelTaskAlarm(editId);
+          }
+        } catch {}
       } else {
-        td.completed = false;
+        td.isCompleted = false;
         const created = await api.createTask(td) as any;
-        if (taskType === 'deadline' && td.dueDate && taskAlarmEnabled && created?.id) {
-          await scheduleTaskAlarm(created.id, td.title, new Date(td.dueDate));
-        }
         if (created?.id && tempId) {
           setTasks(prev => prev.map(t => t.id === tempId ? { ...t, id: created.id } : t));
         }
+        // 알람은 별도 try/catch (실패해도 할일은 이미 저장됨)
+        try {
+          if (taskType === 'deadline' && td.dueDate && taskAlarmEnabled && created?.id) {
+            await scheduleTaskAlarm(created.id, td.title, new Date(td.dueDate));
+          }
+        } catch {}
       }
     } catch (e) {
-      Alert.alert('오류', isEditing ? '수정에 실패했습니다.' : '할일 추가에 실패했습니다.');
-      fetchData();
+      // 서버에 생성됐을 수 있으므로, 다시 불러와서 동기화
+      try { await fetchData(); } catch {}
     }
   };
 
@@ -198,6 +204,63 @@ export default function SimpleHomeScreen() {
     ]);
   };
 
+
+  const handleShareToday = async () => {
+    const todayStr = format(new Date(), 'yyyy년 M월 d일 (EEEE)', { locale: ko });
+    let message = `📋 또박또박 - ${todayStr}\n`;
+
+    // 오늘 할 일
+    if (tasks.length > 0) {
+      message += `\n✅ 할 일\n`;
+      tasks.forEach(t => {
+        const di = getDueDateInfo(t);
+        message += `• ${t.title}${di ? ` (${di.text})` : ''}\n`;
+      });
+    }
+
+    // 오늘 일정 가져오기
+    try {
+      const routinesRes = await api.getRoutines();
+      const routines = Array.isArray(routinesRes) ? routinesRes : (routinesRes as any).routines || [];
+      const todayDate = format(new Date(), 'yyyy-MM-dd');
+      const todaySchedules = routines
+        .filter((r: any) => {
+          try {
+            const meta = r.description ? JSON.parse(r.description) : null;
+            return meta?.date === todayDate;
+          } catch { return false; }
+        })
+        .sort((a: any, b: any) => (a.startTime || '').localeCompare(b.startTime || ''));
+
+      if (todaySchedules.length > 0) {
+        message += `\n📅 일정\n`;
+        todaySchedules.forEach((s: any) => {
+          const time = s.startTime || '';
+          let meta: any = null;
+          try { meta = JSON.parse(s.description); } catch {}
+          const place = meta?.place ? ` (${meta.place})` : '';
+          message += `• ${time ? time + ' ' : ''}${s.name}${place}\n`;
+        });
+      }
+    } catch {}
+
+    // 오늘 습관 가져오기
+    try {
+      const habitsRes = await api.getHabits();
+      const habits = habitsRes || [];
+      if (habits.length > 0) {
+        const todayDate = format(new Date(), 'yyyy-MM-dd');
+        message += `\n⚡ 습관\n`;
+        habits.forEach((h: any) => {
+          const done = h.logs?.some((l: any) => l.date?.split('T')[0] === todayDate);
+          message += `${done ? '✅' : '⬜'} ${h.name}${h.currentStreak ? ` (${h.currentStreak}일째)` : ''}\n`;
+        });
+      }
+    } catch {}
+
+    message += `\n또박또박 앱에서 확인하세요!`;
+    Share.share({ message });
+  };
 
   const renderLeftActions = (t: Task) => (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
     const scale = dragX.interpolate({ inputRange: [0, 80], outputRange: [0.5, 1], extrapolate: 'clamp' });
@@ -327,6 +390,9 @@ export default function SimpleHomeScreen() {
         ListFooterComponent={<View style={{ height: 80 }} />}
       />
 
+      <TouchableOpacity style={[styles.shareFab, { backgroundColor: colors.card, borderColor: colors.primary, borderWidth: 1.5 }]} onPress={handleShareToday}>
+        <Share2 size={20} color={colors.primary} />
+      </TouchableOpacity>
       <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary }]} onPress={openAddModal}>
         <Plus size={24} color="#fff" />
       </TouchableOpacity>
@@ -535,6 +601,7 @@ const styles = StyleSheet.create({
   swipeCopy: { justifyContent: 'center', alignItems: 'center', width: 80, marginBottom: 4 },
   swipeCopyBtn: { backgroundColor: '#3b82f6', borderRadius: 10, padding: 12, alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' },
   swipeCopyText: { color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 2 },
+  shareFab: { position: 'absolute', right: 16, bottom: 76, width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 3 },
   fab: { position: 'absolute', right: 16, bottom: 16, width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 32, maxHeight: '90%' },

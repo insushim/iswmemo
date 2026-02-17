@@ -91,7 +91,7 @@ export default function HabitsScreen() {
     if (!isEditing) {
       tempId = `temp-${Date.now()}`;
       const tempHabit = { id: tempId, name, color: selectedColor, frequency: 'DAILY', completedDates: [], currentStreak: 0, createdAt: new Date().toISOString() } as any;
-      setHabits(prev => [...prev, tempHabit]);
+      setHabits(prev => [tempHabit, ...prev]);
     } else {
       setHabits(prev => prev.map(h => h.id === editId ? { ...h, name, color: selectedColor } : h));
     }
@@ -106,8 +106,8 @@ export default function HabitsScreen() {
         }
       }
     } catch (error: any) {
-      Alert.alert('오류', error?.message || '저장에 실패했습니다');
-      fetchHabits();
+      // 서버에 생성됐을 수 있으므로, 다시 불러와서 동기화
+      try { await fetchHabits(); } catch {}
     } finally { setIsSubmitting(false); }
   };
 

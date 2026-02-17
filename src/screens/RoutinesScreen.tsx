@@ -92,7 +92,7 @@ export default function RoutinesScreen() {
     if (!isEditing) {
       tempId = `temp-${Date.now()}`;
       const tempRoutine = { id: tempId, name, type: selectedType, items: items.length > 0 ? items : [], completedItemsToday: [], createdAt: new Date().toISOString() } as any;
-      setRoutines(prev => [...prev, tempRoutine]);
+      setRoutines(prev => [tempRoutine, ...prev]);
     } else {
       setRoutines(prev => prev.map(r => r.id === editId ? { ...r, name, type: selectedType, items: items.length > 0 ? items : r.items } : r));
     }

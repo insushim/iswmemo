@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { ListTodo, Zap, CalendarDays, Target, StickyNote, Settings } from 'lucide-react-native';
+import { CalendarCheck, Zap, CalendarDays, Target, StickyNote, Settings } from 'lucide-react-native';
 import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../lib/theme';
@@ -58,8 +58,8 @@ function MainTabs() {
         name="Tasks"
         component={SimpleHomeScreen}
         options={{
-          tabBarLabel: '할일',
-          tabBarIcon: ({ color }) => <ListTodo size={19} color={color} />,
+          tabBarLabel: '오늘',
+          tabBarIcon: ({ color }) => <CalendarCheck size={19} color={color} />,
         }}
       />
       <Tab.Screen

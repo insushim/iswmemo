@@ -68,7 +68,7 @@ export default function TasksScreen() {
 
     const tempId = `temp-${Date.now()}`;
     const tempTask = { id: tempId, title, priority, isCompleted: false, createdAt: new Date().toISOString() } as any;
-    setTasks(prev => [...prev, tempTask]);
+    setTasks(prev => [tempTask, ...prev]);
     setNewTaskTitle('');
     setNewTaskPriority('MEDIUM');
     setShowModal(false);
@@ -79,8 +79,8 @@ export default function TasksScreen() {
         setTasks(prev => prev.map(t => t.id === tempId ? { ...t, id: created.id } : t));
       }
     } catch (error) {
-      Alert.alert('오류', '할일 추가에 실패했습니다');
-      fetchTasks();
+      // 서버에 생성됐을 수 있으므로, 다시 불러와서 동기화
+      try { await fetchTasks(); } catch {}
     }
   };
 

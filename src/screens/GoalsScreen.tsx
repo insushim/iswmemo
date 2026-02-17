@@ -88,7 +88,7 @@ export default function GoalsScreen() {
     if (!isEditing) {
       tempId = `temp-${Date.now()}`;
       const tempGoal = { id: tempId, title, type: newGoalType, color: selectedColor, status: 'IN_PROGRESS', createdAt: new Date().toISOString() } as any;
-      setGoals(prev => [...prev, tempGoal]);
+      setGoals(prev => [tempGoal, ...prev]);
     } else {
       setGoals(prev => prev.map(g => g.id === editId ? { ...g, title, type: newGoalType, color: selectedColor } : g));
     }
@@ -103,8 +103,8 @@ export default function GoalsScreen() {
         }
       }
     } catch (error) {
-      Alert.alert('오류', '저장에 실패했습니다');
-      fetchGoals();
+      // 서버에 생성됐을 수 있으므로, 다시 불러와서 동기화
+      try { await fetchGoals(); } catch {}
     }
   };
 
