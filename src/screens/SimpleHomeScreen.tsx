@@ -271,8 +271,9 @@ export default function SimpleHomeScreen() {
           renderRightActions={renderRightActions(t)}
           overshootLeft={false}
           overshootRight={false}
-          leftThreshold={15}
-          rightThreshold={15}
+          leftThreshold={40}
+          rightThreshold={40}
+          friction={2}
           containerStyle={{ flex: 1 }}
         >
           <GHTouchable
@@ -280,18 +281,18 @@ export default function SimpleHomeScreen() {
             style={[
               styles.taskItem,
               { backgroundColor: colors.card, paddingVertical: cardPadding, paddingHorizontal: cardPadding + 2, opacity: isActive ? 0.8 : 1 },
-              o && { borderLeftColor: '#ef4444', borderLeftWidth: 3 },
+              o && { borderLeftColor: colors.mutedForeground, borderLeftWidth: 3, opacity: 0.6 },
             ]}
             onPress={() => openEditModal(t)}
             onLongPress={() => { closeAllSwipeables(); drag(); }}
             enabled={!isActive}
           >
             <View style={styles.taskContent}>
-              <Text style={[styles.taskTitle, { color: colors.foreground, fontSize: scaledFont(14), textAlign }]}>{t.title}</Text>
+              <Text style={[styles.taskTitle, { color: o ? colors.mutedForeground : colors.foreground, fontSize: scaledFont(14), textAlign, textDecorationLine: o ? 'line-through' : 'none' }]}>{t.title}</Text>
               {di && (
                 <View style={[styles.dueDateRow, textAlign === 'center' && { justifyContent: 'center' }]}>
-                  {o ? <AlertCircle size={11} color="#ef4444" /> : <Clock size={11} color={di.isUrgent ? colors.primary : colors.mutedForeground} />}
-                  <Text style={[styles.dueDateText, { color: o ? '#ef4444' : di.isUrgent ? colors.primary : colors.mutedForeground, fontSize: scaledFont(11) }]}>{di.text}</Text>
+                  {o ? <AlertCircle size={11} color={colors.mutedForeground} /> : <Clock size={11} color={di.isUrgent ? colors.primary : colors.mutedForeground} />}
+                  <Text style={[styles.dueDateText, { color: o ? colors.mutedForeground : di.isUrgent ? colors.primary : colors.mutedForeground, fontSize: scaledFont(11) }]}>{di.text}</Text>
                 </View>
               )}
             </View>

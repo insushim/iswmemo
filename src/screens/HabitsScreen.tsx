@@ -213,8 +213,9 @@ export default function HabitsScreen() {
                 renderRightActions={renderRightActions(habit)}
                 overshootLeft={false}
                 overshootRight={false}
-                leftThreshold={15}
-                rightThreshold={15}
+                leftThreshold={40}
+                rightThreshold={40}
+                friction={2}
               >
                 <TouchableOpacity
                   activeOpacity={0.7}
