@@ -131,7 +131,28 @@ export default function App() {
         // 3. POST_NOTIFICATIONS 권한
         await requestNotificationPermission();
 
-        // 4. 자동 시작 권한 안내 (제조사별)
+        // 4. 전체 화면 알림 권한 (Android 14+, 잠금화면 알람 표시 필수)
+        try {
+          const hasFullScreen = await AutoLaunchModule.checkFullScreenIntentPermission();
+          if (!hasFullScreen) {
+            await new Promise<void>((resolve) => {
+              Alert.alert(
+                '권한 필요: 전체 화면 알림',
+                '잠금화면에서 알람이 울리려면 필수 권한입니다.\n\n설정에서 권한을 켜주세요.',
+                [{
+                  text: '설정으로 이동',
+                  onPress: () => {
+                    openSettingsAndWait(() => AutoLaunchModule.requestFullScreenIntentPermission())
+                      .then(resolve);
+                  },
+                }],
+                { cancelable: false },
+              );
+            });
+          }
+        } catch {}
+
+        // 5. 자동 시작 권한 안내 (제조사별)
         await promptAutoStart();
 
       } catch (e) {

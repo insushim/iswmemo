@@ -162,7 +162,7 @@ export default function SimpleHomeScreen() {
         // 알람은 별도 try/catch (실패해도 할일은 이미 저장됨)
         try {
           if (taskType === 'deadline' && td.dueDate && taskAlarmEnabled) {
-            await scheduleTaskAlarm(editId, td.title, new Date(td.dueDate));
+            await scheduleTaskAlarm(editId, td.title, new Date(td.dueDate), 'task');
           } else {
             await cancelTaskAlarm(editId);
           }
@@ -176,7 +176,7 @@ export default function SimpleHomeScreen() {
         // 알람은 별도 try/catch (실패해도 할일은 이미 저장됨)
         try {
           if (taskType === 'deadline' && td.dueDate && taskAlarmEnabled && created?.id) {
-            await scheduleTaskAlarm(created.id, td.title, new Date(td.dueDate));
+            await scheduleTaskAlarm(created.id, td.title, new Date(td.dueDate), 'task');
           }
         } catch {}
       }

@@ -16,8 +16,14 @@ export default function GoalBanner() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30000);
-    return () => clearInterval(timer);
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    // 다음 분 경계까지 대기 후 매 분 정각에 갱신 (시계 정확도)
+    const msToNextMin = (60 - new Date().getSeconds()) * 1000;
+    const timeout = setTimeout(() => {
+      setNow(new Date());
+      intervalId = setInterval(() => setNow(new Date()), 60000);
+    }, msToNextMin);
+    return () => { clearTimeout(timeout); if (intervalId) clearInterval(intervalId); };
   }, []);
 
   useEffect(() => {

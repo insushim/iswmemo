@@ -198,7 +198,7 @@ export default function ScheduleScreen() {
         if (eventNotify && scheduleAlarmEnabled) {
           const alarmDate = new Date(`${dateStr}T${startTime}:00`);
           if (alarmDate.getTime() > Date.now()) {
-            await scheduleTaskAlarm(editId, payload.name, alarmDate);
+            await scheduleTaskAlarm(editId, payload.name, alarmDate, 'schedule');
           }
         } else {
           await cancelTaskAlarm(editId);
@@ -211,7 +211,7 @@ export default function ScheduleScreen() {
           if (eventNotify && scheduleAlarmEnabled) {
             const alarmDate = new Date(`${dateStr}T${startTime}:00`);
             if (alarmDate.getTime() > Date.now()) {
-              await scheduleTaskAlarm(created.id, payload.name, alarmDate);
+              await scheduleTaskAlarm(created.id, payload.name, alarmDate, 'schedule');
             }
           }
         }

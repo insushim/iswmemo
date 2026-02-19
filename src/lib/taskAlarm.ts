@@ -10,15 +10,14 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return status === 'granted';
 }
 
-export async function scheduleTaskAlarm(taskId: string, title: string, dueDate: Date) {
+export async function scheduleTaskAlarm(taskId: string, title: string, dueDate: Date, type: 'task' | 'schedule' = 'task') {
   await cancelTaskAlarm(taskId);
 
   if (dueDate.getTime() <= Date.now()) return;
 
   try {
     if (Platform.OS === 'android' && AlarmModule) {
-      // 네이티브 AlarmManager는 알림 권한 없이도 동작
-      await AlarmModule.scheduleAlarm(taskId, title, dueDate.getTime());
+      await AlarmModule.scheduleAlarm(taskId, title, dueDate.getTime(), type);
     }
   } catch (e) {
     console.error('Failed to schedule alarm:', e);

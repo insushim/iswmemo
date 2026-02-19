@@ -9,7 +9,7 @@ declare module 'react-native' {
       isServiceRunning(): Promise<boolean>;
     };
     AlarmModule: {
-      scheduleAlarm(taskId: string, title: string, timestamp: number): void;
+      scheduleAlarm(taskId: string, title: string, timestamp: number, type: string): void;
       cancelAlarm(taskId: string): void;
       dismissAlarm(): void;
     };
