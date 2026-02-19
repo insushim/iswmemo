@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import { NativeModules, Platform } from 'react-native';
 import { API_URL } from './config';
 import type {
   Task,
@@ -140,11 +141,19 @@ class ApiClient {
   async setToken(token: string): Promise<void> {
     this.token = token;
     await SecureStore.setItemAsync('auth_token', token);
+    // Native AlarmActivity에서 삭제 API 호출 시 사용할 토큰 저장
+    if (Platform.OS === 'android' && NativeModules.AlarmModule) {
+      try { await NativeModules.AlarmModule.saveAuthToken(token); } catch (e) {}
+    }
   }
 
   async getToken(): Promise<string | null> {
     if (!this.token) {
       this.token = await SecureStore.getItemAsync('auth_token');
+      // Native 측에도 토큰 동기화 (앱 재시작 시)
+      if (this.token && Platform.OS === 'android' && NativeModules.AlarmModule) {
+        try { NativeModules.AlarmModule.saveAuthToken(this.token); } catch (e) {}
+      }
     }
     return this.token;
   }

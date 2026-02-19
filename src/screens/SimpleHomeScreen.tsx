@@ -37,6 +37,10 @@ export default function SimpleHomeScreen() {
   const [selectedHour, setSelectedHour] = useState(9);
   const [selectedMinute, setSelectedMinute] = useState(0);
   const [isAM, setIsAM] = useState(true);
+  const [editingHour, setEditingHour] = useState(false);
+  const [editingMinute, setEditingMinute] = useState(false);
+  const [hourInput, setHourInput] = useState('');
+  const [minuteInput, setMinuteInput] = useState('');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
   const hasLoadedRef = useRef(false);
@@ -467,15 +471,37 @@ export default function SimpleHomeScreen() {
                     <View style={styles.wheelColumn}>
                       <Text style={[styles.wheelLabel, { color: colors.mutedForeground }]}>시</Text>
                       <View style={[styles.wheelBox, { borderColor: colors.border }]}>
-                        <TouchableOpacity style={styles.wheelArrow} onPress={() => setSelectedHour(prev => prev === 12 ? 1 : prev + 1)}>
+                        <TouchableOpacity style={styles.wheelArrow} onPress={() => { setEditingHour(false); setSelectedHour(prev => prev === 12 ? 1 : prev + 1); }}>
                           <ChevronUp size={22} color={colors.mutedForeground} />
                         </TouchableOpacity>
-                        <View style={[styles.wheelValue, { backgroundColor: colors.primary + '15' }]}>
-                          <Text style={[styles.wheelValueText, { color: colors.primary }]}>
-                            {selectedHour}
-                          </Text>
-                        </View>
-                        <TouchableOpacity style={styles.wheelArrow} onPress={() => setSelectedHour(prev => prev === 1 ? 12 : prev - 1)}>
+                        <TouchableOpacity style={[styles.wheelValue, { backgroundColor: colors.primary + '15' }]} onPress={() => { setEditingHour(true); setHourInput(String(selectedHour)); }}>
+                          {editingHour ? (
+                            <TextInput
+                              style={[styles.wheelValueText, { color: colors.primary, padding: 0, textAlign: 'center', minWidth: 30 }]}
+                              value={hourInput}
+                              onChangeText={setHourInput}
+                              keyboardType="number-pad"
+                              maxLength={2}
+                              autoFocus
+                              selectTextOnFocus
+                              onBlur={() => {
+                                const v = parseInt(hourInput);
+                                if (v >= 1 && v <= 12) setSelectedHour(v);
+                                setEditingHour(false);
+                              }}
+                              onSubmitEditing={() => {
+                                const v = parseInt(hourInput);
+                                if (v >= 1 && v <= 12) setSelectedHour(v);
+                                setEditingHour(false);
+                              }}
+                            />
+                          ) : (
+                            <Text style={[styles.wheelValueText, { color: colors.primary }]}>
+                              {selectedHour}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.wheelArrow} onPress={() => { setEditingHour(false); setSelectedHour(prev => prev === 1 ? 12 : prev - 1); }}>
                           <ChevronDown size={22} color={colors.mutedForeground} />
                         </TouchableOpacity>
                       </View>
@@ -487,15 +513,37 @@ export default function SimpleHomeScreen() {
                     <View style={styles.wheelColumn}>
                       <Text style={[styles.wheelLabel, { color: colors.mutedForeground }]}>분</Text>
                       <View style={[styles.wheelBox, { borderColor: colors.border }]}>
-                        <TouchableOpacity style={styles.wheelArrow} onPress={() => setSelectedMinute(prev => prev === 59 ? 0 : prev + 1)}>
+                        <TouchableOpacity style={styles.wheelArrow} onPress={() => { setEditingMinute(false); setSelectedMinute(prev => prev === 59 ? 0 : prev + 1); }}>
                           <ChevronUp size={22} color={colors.mutedForeground} />
                         </TouchableOpacity>
-                        <View style={[styles.wheelValue, { backgroundColor: colors.primary + '15' }]}>
-                          <Text style={[styles.wheelValueText, { color: colors.primary }]}>
-                            {String(selectedMinute).padStart(2, '0')}
-                          </Text>
-                        </View>
-                        <TouchableOpacity style={styles.wheelArrow} onPress={() => setSelectedMinute(prev => prev === 0 ? 59 : prev - 1)}>
+                        <TouchableOpacity style={[styles.wheelValue, { backgroundColor: colors.primary + '15' }]} onPress={() => { setEditingMinute(true); setMinuteInput(String(selectedMinute).padStart(2, '0')); }}>
+                          {editingMinute ? (
+                            <TextInput
+                              style={[styles.wheelValueText, { color: colors.primary, padding: 0, textAlign: 'center', minWidth: 30 }]}
+                              value={minuteInput}
+                              onChangeText={setMinuteInput}
+                              keyboardType="number-pad"
+                              maxLength={2}
+                              autoFocus
+                              selectTextOnFocus
+                              onBlur={() => {
+                                const v = parseInt(minuteInput);
+                                if (v >= 0 && v <= 59) setSelectedMinute(v);
+                                setEditingMinute(false);
+                              }}
+                              onSubmitEditing={() => {
+                                const v = parseInt(minuteInput);
+                                if (v >= 0 && v <= 59) setSelectedMinute(v);
+                                setEditingMinute(false);
+                              }}
+                            />
+                          ) : (
+                            <Text style={[styles.wheelValueText, { color: colors.primary }]}>
+                              {String(selectedMinute).padStart(2, '0')}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.wheelArrow} onPress={() => { setEditingMinute(false); setSelectedMinute(prev => prev === 0 ? 59 : prev - 1); }}>
                           <ChevronDown size={22} color={colors.mutedForeground} />
                         </TouchableOpacity>
                       </View>

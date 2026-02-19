@@ -12,6 +12,7 @@ declare module 'react-native' {
       scheduleAlarm(taskId: string, title: string, timestamp: number, type: string): void;
       cancelAlarm(taskId: string): void;
       dismissAlarm(): void;
+      saveAuthToken(token: string): Promise<boolean>;
     };
     AutoLaunchModule: {
       checkOverlayPermission(): Promise<boolean>;
