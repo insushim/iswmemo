@@ -237,14 +237,21 @@ export default function SimpleHomeScreen() {
     return isBefore(parseISO(t.dueDate), new Date());
   };
 
+  const formatTime12 = (time24: string): string => {
+    const [h, m] = time24.split(':');
+    const { hour, am } = from24Hour(parseInt(h));
+    return `${am ? '오전' : '오후'} ${hour}:${m}`;
+  };
+
   const getDueDateInfo = (t: Task): { text: string; isUrgent: boolean } | null => {
     if (!t.dueDate) return null;
     const d = parseISO(t.dueDate);
     const n = new Date();
-    if (isSameDay(d, n)) return { text: `오늘 ${t.dueTime || ''}`, isUrgent: true };
-    if (isSameDay(d, addDays(n, 1))) return { text: `내일 ${t.dueTime || ''}`, isUrgent: false };
+    const timeStr = t.dueTime ? formatTime12(t.dueTime) : '';
+    if (isSameDay(d, n)) return { text: `오늘 ${timeStr}`, isUrgent: true };
+    if (isSameDay(d, addDays(n, 1))) return { text: `내일 ${timeStr}`, isUrgent: false };
     if (isBefore(d, n)) return { text: '기한 지남', isUrgent: true };
-    return { text: format(d, 'M/d (E)', { locale: ko }) + (t.dueTime ? ` ${t.dueTime}` : ''), isUrgent: false };
+    return { text: format(d, 'M/d (E)', { locale: ko }) + (timeStr ? ` ${timeStr}` : ''), isUrgent: false };
   };
 
   const getCalendarDays = () => {
