@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Modal, Keyboard, Animated, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Modal, Keyboard, Animated, ScrollView, Platform, NativeModules } from 'react-native';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -73,15 +73,33 @@ export default function SimpleHomeScreen() {
     loadCached();
   }, []);
 
+  const processPendingDelete = useCallback(async () => {
+    if (Platform.OS !== 'android' || !NativeModules.AlarmModule) return;
+    try {
+      const pending = await NativeModules.AlarmModule.getPendingDelete();
+      if (pending?.id) {
+        if (pending.type === 'schedule') {
+          await api.fetch(`/routines/${pending.id}`, { method: 'DELETE' });
+        } else {
+          await api.fetch(`/tasks?id=${pending.id}`, { method: 'DELETE' });
+        }
+        await NativeModules.AlarmModule.clearPendingDelete();
+      }
+    } catch (e) {
+      // 삭제 실패해도 pending은 지움 (무한 반복 방지)
+      try { await NativeModules.AlarmModule.clearPendingDelete(); } catch {}
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
+      await processPendingDelete();
       const tasksRes = await api.getTasks();
       const filtered = (tasksRes || []).filter((t: Task) => !t.isCompleted);
       setTasks(filtered);
-      // 캐시 저장
       SecureStore.setItemAsync(TASKS_CACHE_KEY, JSON.stringify(filtered)).catch(() => {});
     } catch (e) { console.error(e); }
-  }, []);
+  }, [processPendingDelete]);
 
   useFocusEffect(useCallback(() => { if (!hasLoadedRef.current) { hasLoadedRef.current = true; fetchData(); } }, [fetchData]));
 

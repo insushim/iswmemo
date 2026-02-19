@@ -13,6 +13,8 @@ declare module 'react-native' {
       cancelAlarm(taskId: string): void;
       dismissAlarm(): void;
       saveAuthToken(token: string): Promise<boolean>;
+      getPendingDelete(): Promise<{id: string; type: string} | null>;
+      clearPendingDelete(): Promise<boolean>;
     };
     AutoLaunchModule: {
       checkOverlayPermission(): Promise<boolean>;
