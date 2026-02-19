@@ -9,7 +9,7 @@ import Navigation from './src/navigation';
 import { useAuthStore } from './src/store/auth';
 import { useGoalStore } from './src/store/goals';
 import { useSettingsStore } from './src/store/settings';
-import { requestNotificationPermission } from './src/lib/taskAlarm';
+import { requestNotificationPermission, syncAuthTokenToNative } from './src/lib/taskAlarm';
 import { promptAutoStart } from './src/lib/autostart';
 import { checkForUpdate } from './src/lib/appUpdate';
 
@@ -42,6 +42,7 @@ export default function App() {
       try {
         await loadSettings();
         await checkAuth();
+        await syncAuthTokenToNative(); // 알람 삭제용 토큰 동기화
         await loadPinnedGoals();
         // 기존 expo 잔여 알림 모두 정리 (네이티브 알람은 영향 없음)
         await Notifications.cancelAllScheduledNotificationsAsync();

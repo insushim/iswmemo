@@ -1,5 +1,6 @@
 import { NativeModules, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import * as SecureStore from 'expo-secure-store';
 
 const { AlarmModule } = NativeModules;
 
@@ -10,6 +11,15 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return status === 'granted';
 }
 
+// Native SharedPreferences에 auth 토큰 동기화 (AlarmActivity에서 DELETE 시 필요)
+export async function syncAuthTokenToNative(): Promise<void> {
+  if (Platform.OS !== 'android' || !AlarmModule) return;
+  try {
+    const token = await SecureStore.getItemAsync('auth_token');
+    if (token) await AlarmModule.saveAuthToken(token);
+  } catch (e) {}
+}
+
 export async function scheduleTaskAlarm(taskId: string, title: string, dueDate: Date, type: 'task' | 'schedule' = 'task') {
   await cancelTaskAlarm(taskId);
 
@@ -17,6 +27,8 @@ export async function scheduleTaskAlarm(taskId: string, title: string, dueDate: 
 
   try {
     if (Platform.OS === 'android' && AlarmModule) {
+      // 알람 설정 시 토큰도 동기화
+      await syncAuthTokenToNative();
       await AlarmModule.scheduleAlarm(taskId, title, dueDate.getTime(), type);
     }
   } catch (e) {
