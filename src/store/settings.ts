@@ -1,22 +1,32 @@
-import { create } from 'zustand';
-import * as SecureStore from 'expo-secure-store';
+import { create } from "zustand";
+import * as SecureStore from "expo-secure-store";
 
-const SETTINGS_KEY = 'app_settings_v2';
-const THEME_KEY = 'theme_dark_mode';
+const SETTINGS_KEY = "app_settings_v2";
+const THEME_KEY = "theme_dark_mode";
 
-export type FontSizeOption = 'small' | 'medium' | 'large' | 'xlarge';
-export type CardSizeOption = 'compact' | 'normal' | 'large';
-export type TextAlignOption = 'left' | 'center';
-export type ThemeColorOption = 'indigo' | 'blue' | 'green' | 'rose' | 'orange' | 'purple' | 'teal';
+export type FontSizeOption = "small" | "medium" | "large" | "xlarge";
+export type CardSizeOption = "compact" | "normal" | "large";
+export type TextAlignOption = "left" | "center";
+export type ThemeColorOption =
+  | "indigo"
+  | "blue"
+  | "green"
+  | "rose"
+  | "orange"
+  | "purple"
+  | "teal";
 
-export const THEME_COLOR_OPTIONS: Record<ThemeColorOption, { label: string; primary: string; primaryDark: string }> = {
-  indigo: { label: '인디고', primary: '#6366f1', primaryDark: '#818cf8' },
-  blue: { label: '블루', primary: '#3b82f6', primaryDark: '#60a5fa' },
-  green: { label: '그린', primary: '#22c55e', primaryDark: '#4ade80' },
-  rose: { label: '로즈', primary: '#f43f5e', primaryDark: '#fb7185' },
-  orange: { label: '오렌지', primary: '#f97316', primaryDark: '#fb923c' },
-  purple: { label: '퍼플', primary: '#a855f7', primaryDark: '#c084fc' },
-  teal: { label: '틸', primary: '#14b8a6', primaryDark: '#2dd4bf' },
+export const THEME_COLOR_OPTIONS: Record<
+  ThemeColorOption,
+  { label: string; primary: string; primaryDark: string }
+> = {
+  indigo: { label: "인디고", primary: "#6366f1", primaryDark: "#818cf8" },
+  blue: { label: "블루", primary: "#3b82f6", primaryDark: "#60a5fa" },
+  green: { label: "그린", primary: "#22c55e", primaryDark: "#4ade80" },
+  rose: { label: "로즈", primary: "#f43f5e", primaryDark: "#fb7185" },
+  orange: { label: "오렌지", primary: "#f97316", primaryDark: "#fb923c" },
+  purple: { label: "퍼플", primary: "#a855f7", primaryDark: "#c084fc" },
+  teal: { label: "틸", primary: "#14b8a6", primaryDark: "#2dd4bf" },
 };
 
 export const FONT_SIZE_SCALE: Record<FontSizeOption, number> = {
@@ -27,16 +37,16 @@ export const FONT_SIZE_SCALE: Record<FontSizeOption, number> = {
 };
 
 export const FONT_SIZE_LABELS: Record<FontSizeOption, string> = {
-  small: '작게',
-  medium: '보통',
-  large: '크게',
-  xlarge: '아주 크게',
+  small: "작게",
+  medium: "보통",
+  large: "크게",
+  xlarge: "아주 크게",
 };
 
 export const CARD_SIZE_LABELS: Record<CardSizeOption, string> = {
-  compact: '좁게',
-  normal: '보통',
-  large: '넓게',
+  compact: "좁게",
+  normal: "보통",
+  large: "넓게",
 };
 
 export const CARD_SIZE_PADDING: Record<CardSizeOption, number> = {
@@ -46,9 +56,17 @@ export const CARD_SIZE_PADDING: Record<CardSizeOption, number> = {
 };
 
 export const TEXT_ALIGN_LABELS: Record<TextAlignOption, string> = {
-  left: '왼쪽',
-  center: '가운데',
+  left: "왼쪽",
+  center: "가운데",
 };
+
+export const ALARM_DURATION_OPTIONS: { label: string; value: number }[] = [
+  { label: "1분", value: 1 },
+  { label: "2분", value: 2 },
+  { label: "3분", value: 3 },
+  { label: "5분", value: 5 },
+  { label: "10분", value: 10 },
+];
 
 interface SettingsState {
   darkMode: boolean;
@@ -59,6 +77,7 @@ interface SettingsState {
   taskAlarmEnabled: boolean;
   scheduleAlarmEnabled: boolean;
   autoLaunchEnabled: boolean;
+  alarmDuration: number;
   isLoaded: boolean;
   setDarkMode: (value: boolean) => Promise<void>;
   setFontSize: (size: FontSizeOption) => Promise<void>;
@@ -68,6 +87,7 @@ interface SettingsState {
   setTaskAlarmEnabled: (value: boolean) => Promise<void>;
   setScheduleAlarmEnabled: (value: boolean) => Promise<void>;
   setAutoLaunchEnabled: (value: boolean) => Promise<void>;
+  setAlarmDuration: (minutes: number) => Promise<void>;
   loadSettings: () => Promise<void>;
 }
 
@@ -78,23 +98,24 @@ const saveDisplaySettings = async (partial: Record<string, any>) => {
     const merged = { ...current, ...partial };
     await SecureStore.setItemAsync(SETTINGS_KEY, JSON.stringify(merged));
   } catch (e) {
-    console.error('Failed to save display settings:', e);
+    console.error("Failed to save display settings:", e);
   }
 };
 
 export const useSettingsStore = create<SettingsState>((set) => ({
   darkMode: false,
-  fontSize: 'medium',
-  cardSize: 'normal',
-  textAlign: 'left',
-  themeColor: 'indigo',
+  fontSize: "medium",
+  cardSize: "normal",
+  textAlign: "left",
+  themeColor: "indigo",
   taskAlarmEnabled: true,
   scheduleAlarmEnabled: true,
   autoLaunchEnabled: true,
+  alarmDuration: 3,
   isLoaded: false,
 
   setDarkMode: async (value: boolean) => {
-    await SecureStore.setItemAsync(THEME_KEY, value ? 'true' : 'false');
+    await SecureStore.setItemAsync(THEME_KEY, value ? "true" : "false");
     set({ darkMode: value });
   },
 
@@ -133,25 +154,46 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     set({ autoLaunchEnabled: value });
   },
 
+  setAlarmDuration: async (minutes: number) => {
+    await saveDisplaySettings({ alarmDuration: minutes });
+    set({ alarmDuration: minutes });
+    // Java 쪽 SharedPreferences에도 동기화
+    try {
+      const { NativeModules, Platform } = require("react-native");
+      if (Platform.OS === "android" && NativeModules.AlarmModule) {
+        await NativeModules.AlarmModule.setAlarmDuration(minutes);
+      }
+    } catch {}
+  },
+
   loadSettings: async () => {
     try {
       const dark = await SecureStore.getItemAsync(THEME_KEY);
       const raw = await SecureStore.getItemAsync(SETTINGS_KEY);
       const display = raw ? JSON.parse(raw) : {};
 
+      const duration = display.alarmDuration || 3;
       set({
-        darkMode: dark === 'true',
-        fontSize: display.fontSize || 'medium',
-        cardSize: display.cardSize || 'normal',
-        textAlign: display.textAlign || 'left',
-        themeColor: display.themeColor || 'indigo',
+        darkMode: dark === "true",
+        fontSize: display.fontSize || "medium",
+        cardSize: display.cardSize || "normal",
+        textAlign: display.textAlign || "left",
+        themeColor: display.themeColor || "indigo",
         taskAlarmEnabled: display.taskAlarmEnabled !== false,
         scheduleAlarmEnabled: display.scheduleAlarmEnabled !== false,
         autoLaunchEnabled: display.autoLaunchEnabled !== false,
+        alarmDuration: duration,
         isLoaded: true,
       });
+      // 앱 시작 시 Java 쪽에도 동기화
+      try {
+        const { NativeModules, Platform } = require("react-native");
+        if (Platform.OS === "android" && NativeModules.AlarmModule) {
+          NativeModules.AlarmModule.setAlarmDuration(duration);
+        }
+      } catch {}
     } catch (error) {
-      console.error('Failed to load settings:', error);
+      console.error("Failed to load settings:", error);
       set({ isLoaded: true });
     }
   },

@@ -1,13 +1,27 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, StatusBar as RNStatusBar, Platform } from 'react-native';
-import { Target } from 'lucide-react-native';
-import { format } from 'date-fns';
-import { ko } from 'date-fns/locale';
-import { useTheme } from '../lib/theme';
-import { useGoalStore } from '../store/goals';
-import { getWeather, getDustLevel, getDustLevel10, getDustColor, getDustColor10, WeatherData } from '../lib/weather';
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  StatusBar as RNStatusBar,
+  Platform,
+} from "react-native";
+import { Target } from "lucide-react-native";
+import { format } from "date-fns";
+import { ko } from "date-fns/locale";
+import { useTheme } from "../lib/theme";
+import { useGoalStore } from "../store/goals";
+import {
+  getWeather,
+  getDustLevel,
+  getDustLevel10,
+  getDustColor,
+  getDustColor10,
+  WeatherData,
+} from "../lib/weather";
 
-const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0;
+const STATUS_BAR_HEIGHT =
+  Platform.OS === "android" ? RNStatusBar.currentHeight || 24 : 0;
 
 export default function GoalBanner() {
   const { colors } = useTheme();
@@ -17,35 +31,54 @@ export default function GoalBanner() {
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
-    // 다음 분 경계까지 대기 후 매 분 정각에 갱신 (시계 정확도)
-    const msToNextMin = (60 - new Date().getSeconds()) * 1000;
+    // 다음 분 경계까지 대기 후 매 분 정각에 갱신 (밀리초 단위 정확도)
+    const now = new Date();
+    const msToNextMin = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
     const timeout = setTimeout(() => {
       setNow(new Date());
       intervalId = setInterval(() => setNow(new Date()), 60000);
     }, msToNextMin);
-    return () => { clearTimeout(timeout); if (intervalId) clearInterval(intervalId); };
+    return () => {
+      clearTimeout(timeout);
+      if (intervalId) clearInterval(intervalId);
+    };
   }, []);
 
   useEffect(() => {
     getWeather().then(setWeather);
-    const interval = setInterval(() => { getWeather().then(setWeather); }, 15 * 60 * 1000);
+    const interval = setInterval(
+      () => {
+        getWeather().then(setWeather);
+      },
+      15 * 60 * 1000,
+    );
     return () => clearInterval(interval);
   }, []);
 
   const hour = now.getHours();
   const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-  const minuteStr = String(now.getMinutes()).padStart(2, '0');
+  const minuteStr = String(now.getMinutes()).padStart(2, "0");
   const timeStr = `${hour12}:${minuteStr}`;
-  const dateStr = format(now, 'M/d');
-  const dayStr = format(now, 'EEE', { locale: ko });
+  const dateStr = format(now, "M/d");
+  const dayStr = format(now, "EEE", { locale: ko });
 
   // 날씨 텍스트: "☀4°" 또는 "🌧비4°"
   const weatherText = weather
-    ? `${weather.weatherIcon}${weather.weatherDesc || ''}${weather.temperature}°`
-    : '';
+    ? `${weather.weatherIcon}${weather.weatherDesc || ""}${weather.temperature}°`
+    : "";
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.card, borderBottomColor: colors.border, marginTop: -STATUS_BAR_HEIGHT, paddingTop: STATUS_BAR_HEIGHT + 4 }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.card,
+          borderBottomColor: colors.border,
+          marginTop: -STATUS_BAR_HEIGHT,
+          paddingTop: STATUS_BAR_HEIGHT + 4,
+        },
+      ]}
+    >
       {/* 시간+날짜+날씨+미세먼지 전부 한 줄, 시계 크기 */}
       <Text
         style={[styles.mainLine, { color: colors.foreground }]}
@@ -56,19 +89,26 @@ export default function GoalBanner() {
         {timeStr} {dateStr}({dayStr}) {weatherText}
         {weather && (
           <>
-            {' '}<Text style={{ color: getDustColor10(weather.pm10), fontSize: 18 }}>미세 {weather.pm10} {getDustLevel10(weather.pm10)}</Text>
-            {'  '}<Text style={{ color: getDustColor(weather.pm25), fontSize: 18 }}>초미세 {weather.pm25} {getDustLevel(weather.pm25)}</Text>
+            {" "}
+            <Text style={{ color: getDustColor10(weather.pm10), fontSize: 18 }}>
+              미세 {weather.pm10} {getDustLevel10(weather.pm10)}
+            </Text>
+            {"  "}
+            <Text style={{ color: getDustColor(weather.pm25), fontSize: 18 }}>
+              초미세 {weather.pm25} {getDustLevel(weather.pm25)}
+            </Text>
           </>
         )}
       </Text>
       {weather && weather.alerts.length > 0 && (
-        <Text style={styles.alertText}>{weather.alerts.join(' ')}</Text>
+        <Text style={styles.alertText}>{weather.alerts.join(" ")}</Text>
       )}
 
       {/* 출처 + 측정소명 */}
       {weather && (
         <Text style={[styles.sourceText, { color: colors.mutedForeground }]}>
-          {weather.stationName ? `${weather.stationName} · ` : ''}{weather.dustSource}
+          {weather.stationName ? `${weather.stationName} · ` : ""}
+          {weather.dustSource}
         </Text>
       )}
 
@@ -76,9 +116,23 @@ export default function GoalBanner() {
       {pinnedGoals.length > 0 ? (
         <View style={styles.goalsGrid}>
           {pinnedGoals.map((goal) => (
-            <View key={goal.id} style={[styles.goalCell, { backgroundColor: (goal.color || colors.primary) + '10' }]}>
-              <View style={[styles.goalDot, { backgroundColor: goal.color || colors.primary }]} />
-              <Text style={[styles.goalText, { color: colors.foreground }]} numberOfLines={1}>
+            <View
+              key={goal.id}
+              style={[
+                styles.goalCell,
+                { backgroundColor: (goal.color || colors.primary) + "10" },
+              ]}
+            >
+              <View
+                style={[
+                  styles.goalDot,
+                  { backgroundColor: goal.color || colors.primary },
+                ]}
+              />
+              <Text
+                style={[styles.goalText, { color: colors.foreground }]}
+                numberOfLines={1}
+              >
                 {goal.title}
               </Text>
             </View>
@@ -105,34 +159,34 @@ const styles = StyleSheet.create({
   },
   mainLine: {
     fontSize: 32,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: -1,
     marginBottom: 2,
   },
   alertText: {
     fontSize: 11,
-    fontWeight: '700',
-    color: '#ef4444',
+    fontWeight: "700",
+    color: "#ef4444",
   },
   sourceText: {
     fontSize: 7,
     opacity: 0.4,
-    textAlign: 'right',
+    textAlign: "right",
     marginBottom: 2,
   },
   goalsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 4,
   },
   goalCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
     paddingHorizontal: 7,
     paddingVertical: 4,
     borderRadius: 8,
-    width: '48.5%',
+    width: "48.5%",
   },
   goalDot: {
     width: 6,
@@ -142,11 +196,11 @@ const styles = StyleSheet.create({
   goalText: {
     flex: 1,
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   emptyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   emptyText: {
