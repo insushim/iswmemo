@@ -38,12 +38,12 @@ export default function GoalBanner() {
   }, []);
 
   useEffect(() => {
+    // 즉시 로드 (영구 캐시가 있으면 딜레이 없이 표시)
     getWeather().then(setWeather);
+    // 10분마다 갱신 (서버 캐시와 동기화)
     const interval = setInterval(
-      () => {
-        getWeather().then(setWeather);
-      },
-      15 * 60 * 1000,
+      () => getWeather().then(setWeather),
+      10 * 60 * 1000,
     );
     return () => clearInterval(interval);
   }, []);

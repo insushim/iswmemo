@@ -1,4 +1,5 @@
 import * as Location from "expo-location";
+import * as SecureStore from "expo-secure-store";
 import { API_URL } from "./config";
 
 export interface WeatherData {
@@ -49,12 +50,43 @@ const getDustColor10 = (pm10: number): string => {
 export { getDustLevel, getDustLevel10, getDustColor, getDustColor10 };
 
 // === 캐시 ===
+const WEATHER_CACHE_KEY = "cached_weather_v1";
+const LOCATION_CACHE_KEY = "cached_location_v1";
 let cachedWeather: WeatherData | null = null;
 let cacheTimestamp = 0;
-const CACHE_DURATION = 10 * 60 * 1000; // 10분 (기온/미세먼지 빠르게 반영)
+const CACHE_DURATION = 10 * 60 * 1000; // 10분
 
 const DEFAULT_LAT = 37.5665;
 const DEFAULT_LON = 126.978;
+
+// === GPS 안정성: 마지막 확정 위치 캐시 ===
+let lastLat = 0;
+let lastLon = 0;
+let lastSido = "";
+let lastCity = "";
+let lastDong = "";
+let locationLoaded = false;
+
+// 두 GPS 좌표 사이 거리 (m) - haversine
+function distanceM(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// 500m 이내면 이전 위치 유지 (GPS 흔들림 방지)
+const LOCATION_THRESHOLD_M = 500;
 
 // GPS → 시도명 매핑 (reverse geocoding)
 function getSidoName(region: string): string {
@@ -78,8 +110,65 @@ function getSidoName(region: string): string {
   return "서울";
 }
 
+// 영구 캐시에서 즉시 로드 (앱 시작 시 딜레이 제거)
+async function loadPersistedCache(): Promise<void> {
+  try {
+    const [weatherStr, locStr] = await Promise.all([
+      SecureStore.getItemAsync(WEATHER_CACHE_KEY),
+      SecureStore.getItemAsync(LOCATION_CACHE_KEY),
+    ]);
+    if (weatherStr) {
+      const parsed = JSON.parse(weatherStr);
+      if (parsed.data && parsed.timestamp) {
+        cachedWeather = parsed.data;
+        cacheTimestamp = parsed.timestamp;
+      }
+    }
+    if (locStr) {
+      const loc = JSON.parse(locStr);
+      lastLat = loc.lat || 0;
+      lastLon = loc.lon || 0;
+      lastSido = loc.sido || "";
+      lastCity = loc.city || "";
+      lastDong = loc.dong || "";
+      locationLoaded = true;
+    }
+  } catch {}
+}
+
+// 영구 캐시 저장
+function persistCache(): void {
+  if (cachedWeather) {
+    SecureStore.setItemAsync(
+      WEATHER_CACHE_KEY,
+      JSON.stringify({ data: cachedWeather, timestamp: cacheTimestamp }),
+    ).catch(() => {});
+  }
+  if (lastLat !== 0) {
+    SecureStore.setItemAsync(
+      LOCATION_CACHE_KEY,
+      JSON.stringify({
+        lat: lastLat,
+        lon: lastLon,
+        sido: lastSido,
+        city: lastCity,
+        dong: lastDong,
+      }),
+    ).catch(() => {});
+  }
+}
+
+let persistedLoaded = false;
+
 // === 통합 날씨 조회 (백엔드 프록시 경유) ===
 export async function getWeather(): Promise<WeatherData | null> {
+  // 첫 호출: 영구 캐시 로드
+  if (!persistedLoaded) {
+    persistedLoaded = true;
+    await loadPersistedCache();
+  }
+
+  // 메모리 캐시 유효하면 즉시 반환
   if (cachedWeather && Date.now() - cacheTimestamp < CACHE_DURATION)
     return cachedWeather;
 
@@ -96,33 +185,52 @@ export async function getWeather(): Promise<WeatherData | null> {
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
-        lat = loc.coords.latitude;
-        lon = loc.coords.longitude;
+        const newLat = loc.coords.latitude;
+        const newLon = loc.coords.longitude;
 
-        // reverse geocode → 시도명 + 시군구명 + 읍면동명
-        try {
-          const geocode = await Location.reverseGeocodeAsync({
-            latitude: lat,
-            longitude: lon,
-          });
-          if (geocode.length > 0) {
-            const g = geocode[0];
-            const region = g.region || g.subregion || "";
-            sido = getSidoName(region);
-            // 시군구명 (subregion: "김제시", "함평군" 등)
-            city = g.subregion || "";
-            // 읍면동명 추출 (Android 기기마다 필드가 다를 수 있음)
-            // district=subLocality(동/읍/면), name=featureName, street=thoroughfare
-            // 우선순위: district → city(subregion과 다를때) → name(동/읍/면으로 끝날때)
-            dong =
-              g.district ||
-              (g.city && g.city !== g.subregion ? g.city : "") ||
-              (g.name && /[동읍면리가]$/.test(g.name) ? g.name : "") ||
-              (g.street && /[동읍면리가]$/.test(g.street) ? g.street : "") ||
-              "";
-            console.log(`WEATHER: sido=${sido}, city=${city}, dong=${dong}`);
-          }
-        } catch {}
+        // GPS 안정성: 이전 위치와 500m 이내면 이전 위치 유지
+        if (
+          locationLoaded &&
+          lastLat !== 0 &&
+          distanceM(lastLat, lastLon, newLat, newLon) < LOCATION_THRESHOLD_M
+        ) {
+          lat = lastLat;
+          lon = lastLon;
+          sido = lastSido;
+          city = lastCity;
+          dong = lastDong;
+        } else {
+          lat = newLat;
+          lon = newLon;
+
+          // reverse geocode → 시도명 + 시군구명 + 읍면동명
+          try {
+            const geocode = await Location.reverseGeocodeAsync({
+              latitude: lat,
+              longitude: lon,
+            });
+            if (geocode.length > 0) {
+              const g = geocode[0];
+              const region = g.region || g.subregion || "";
+              sido = getSidoName(region);
+              city = g.subregion || "";
+              dong =
+                g.district ||
+                (g.city && g.city !== g.subregion ? g.city : "") ||
+                (g.name && /[동읍면리가]$/.test(g.name) ? g.name : "") ||
+                (g.street && /[동읍면리가]$/.test(g.street) ? g.street : "") ||
+                "";
+            }
+          } catch {}
+
+          // 위치 캐시 업데이트
+          lastLat = lat;
+          lastLon = lon;
+          lastSido = sido;
+          lastCity = city;
+          lastDong = dong;
+          locationLoaded = true;
+        }
       }
     } catch {}
 
@@ -147,6 +255,7 @@ export async function getWeather(): Promise<WeatherData | null> {
       windSpeed: data.windSpeed ?? 0,
     };
     cacheTimestamp = Date.now();
+    persistCache();
     return cachedWeather;
   } catch (e) {
     console.error("Weather fetch error:", e);
