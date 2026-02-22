@@ -10,7 +10,7 @@ Write-Host "Building APK..."
 
 if ($LASTEXITCODE -eq 0) {
     $apkPath = "$shortPath\android\app\build\outputs\apk\release\app-release.apk"
-    $destPath = "$shortPath\DdobakDdobak-v3.2.5-release.apk"
+    $destPath = "$shortPath\DdobakDdobak-v3.2.6-release.apk"
     if (Test-Path $apkPath) {
         Copy-Item $apkPath $destPath
         Write-Host "APK copied to: $destPath"

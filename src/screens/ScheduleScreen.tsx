@@ -228,11 +228,6 @@ export default function ScheduleScreen() {
     })
     .sort((a, b) => getScheduleTime(a).localeCompare(getScheduleTime(b)));
 
-  // 날짜가 없는 일정 (레거시 루틴)
-  const legacySchedules = schedules.filter(
-    (s) => !parseScheduleMeta(s.description),
-  );
-
   const getCalendarDays = (month: Date) => {
     const start = startOfMonth(month);
     const end = endOfMonth(month);
@@ -523,12 +518,7 @@ export default function ScheduleScreen() {
     })
     .sort((a, b) => (a.dueTime || "").localeCompare(b.dueTime || ""));
 
-  const allDisplayed = [
-    ...todaySchedules,
-    ...(format(selectedDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
-      ? legacySchedules
-      : []),
-  ];
+  const allDisplayed = [...todaySchedules];
 
   const renderItem = ({
     item: schedule,
