@@ -18,7 +18,10 @@ import DraggableFlatList, {
   ScaleDecorator,
   RenderItemParams,
 } from "react-native-draggable-flatlist";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   Swipeable,
@@ -63,12 +66,13 @@ import VoiceInput from "../components/VoiceInput";
 
 const TASKS_CACHE_KEY = "cached_tasks_v1";
 
-type TaskType = "simple" | "deadline";
+type TaskType = "simple" | "deadline" | "timer";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
 export default function SimpleHomeScreen() {
   const { colors, scaledFont, cardPadding, textAlign } = useTheme();
+  const { bottom: bottomInset } = useSafeAreaInsets();
   const { taskAlarmEnabled } = useSettingsStore();
   const [refreshing, setRefreshing] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -80,6 +84,8 @@ export default function SimpleHomeScreen() {
   const [selectedHour, setSelectedHour] = useState(9);
   const [selectedMinute, setSelectedMinute] = useState(0);
   const [isAM, setIsAM] = useState(true);
+  const [timerMinutes, setTimerMinutes] = useState(25);
+  const [now, setNow] = useState(Date.now());
   const [editingHour, setEditingHour] = useState(false);
   const [editingMinute, setEditingMinute] = useState(false);
   const [hourInput, setHourInput] = useState("");
@@ -141,13 +147,27 @@ export default function SimpleHomeScreen() {
     try {
       await processPendingDelete();
       const tasksRes = await api.getTasks();
-      const filtered = (tasksRes || []).filter((t: Task) => !t.isCompleted);
+      if (!Array.isArray(tasksRes)) return;
+      const filtered = tasksRes.filter((t: Task) => !t.isCompleted);
       setTasks(filtered);
-      SecureStore.setItemAsync(TASKS_CACHE_KEY, JSON.stringify(filtered)).catch(
-        () => {},
-      );
+      if (filtered.length > 0) {
+        SecureStore.setItemAsync(
+          TASKS_CACHE_KEY,
+          JSON.stringify(filtered),
+        ).catch(() => {});
+      }
     } catch (e) {
-      console.error(e);
+      if (__DEV__) console.error("fetchData error:", e);
+      // API 실패 시 캐시에서 로드 (인증 만료 등)
+      try {
+        const cached = await SecureStore.getItemAsync(TASKS_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setTasks(parsed);
+          }
+        }
+      } catch {}
     }
   }, [processPendingDelete]);
 
@@ -165,6 +185,20 @@ export default function SimpleHomeScreen() {
     });
     return () => sub.remove();
   }, [fetchData]);
+
+  // 타이머 카운트다운
+  const hasTimerTasks = tasks.some((t) => {
+    try {
+      return JSON.parse(t.description || "{}").timer;
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    if (!hasTimerTasks) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [hasTimerTasks]);
 
   useFocusEffect(
     useCallback(() => {
@@ -193,6 +227,7 @@ export default function SimpleHomeScreen() {
     setSelectedMinute(now.getMinutes());
     setIsAM(am);
     setCalendarMonth(new Date());
+    setTimerMinutes(25);
     setShowAddModal(true);
   };
 
@@ -224,16 +259,38 @@ export default function SimpleHomeScreen() {
   const handleSubmit = async () => {
     if (!newTaskTitle.trim()) return;
     const td: any = { title: newTaskTitle.trim() };
+
+    // 직접 입력 중인 시/분 값 flush
+    let finalHour = selectedHour;
+    let finalMinute = selectedMinute;
+    if (editingHour) {
+      const v = parseInt(hourInput);
+      if (v >= 1 && v <= 12) finalHour = v;
+      setSelectedHour(finalHour);
+      setEditingHour(false);
+    }
+    if (editingMinute) {
+      const v = parseInt(minuteInput);
+      if (v >= 0 && v <= 59) finalMinute = v;
+      setSelectedMinute(finalMinute);
+      setEditingMinute(false);
+    }
+
     if (taskType === "deadline") {
-      const hour24 = to24Hour(selectedHour, isAM);
+      const hour24 = to24Hour(finalHour, isAM);
       const dd = new Date(selectedDate);
-      dd.setHours(hour24, selectedMinute, 0, 0);
+      dd.setHours(hour24, finalMinute, 0, 0);
       if (dd.getTime() < Date.now()) {
         Alert.alert("오류", "현재 시간보다 이전 시간은 설정할 수 없습니다");
         return;
       }
       td.dueDate = dd.toISOString();
-      td.dueTime = `${String(hour24).padStart(2, "0")}:${String(selectedMinute).padStart(2, "0")}`;
+      td.dueTime = `${String(hour24).padStart(2, "0")}:${String(finalMinute).padStart(2, "0")}`;
+    } else if (taskType === "timer") {
+      const timerEnd = new Date(Date.now() + timerMinutes * 60 * 1000);
+      td.dueDate = timerEnd.toISOString();
+      td.dueTime = `${String(timerEnd.getHours()).padStart(2, "0")}:${String(timerEnd.getMinutes()).padStart(2, "0")}`;
+      td.description = JSON.stringify({ timer: true, duration: timerMinutes });
     }
     const isEditing = !!editingTask;
     const editId = editingTask?.id;
@@ -273,6 +330,13 @@ export default function SimpleHomeScreen() {
               new Date(td.dueDate),
               "task",
             );
+          } else if (taskType === "timer" && td.dueDate) {
+            await scheduleTaskAlarm(
+              editId,
+              td.title,
+              new Date(td.dueDate),
+              "timer",
+            );
           } else {
             await cancelTaskAlarm(editId);
           }
@@ -298,6 +362,13 @@ export default function SimpleHomeScreen() {
               td.title,
               new Date(td.dueDate),
               "task",
+            );
+          } else if (taskType === "timer" && td.dueDate && created?.id) {
+            await scheduleTaskAlarm(
+              created.id,
+              td.title,
+              new Date(td.dueDate),
+              "timer",
             );
           }
         } catch {}
@@ -425,6 +496,26 @@ export default function SimpleHomeScreen() {
     return [...paddingDays, ...days];
   };
 
+  const isTimerTask = (t: Task): boolean => {
+    try {
+      return JSON.parse(t.description || "{}").timer === true;
+    } catch {
+      return false;
+    }
+  };
+
+  const getTimerCountdown = (t: Task): string => {
+    if (!t.dueDate) return "";
+    const remaining = Math.max(0, parseISO(t.dueDate).getTime() - now);
+    if (remaining <= 0) return "시간 종료!";
+    const hrs = Math.floor(remaining / 3600000);
+    const mins = Math.floor((remaining % 3600000) / 60000);
+    const secs = Math.floor((remaining % 60000) / 1000);
+    if (hrs > 0)
+      return `${hrs}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")} 남음`;
+    return `${mins}:${String(secs).padStart(2, "0")} 남음`;
+  };
+
   const closeAllSwipeables = () => {
     swipeableRefs.current.forEach((ref) => ref?.close());
   };
@@ -436,6 +527,9 @@ export default function SimpleHomeScreen() {
   }: RenderItemParams<Task>) => {
     const di = getDueDateInfo(t);
     const o = isOverdue(t);
+    const timer = isTimerTask(t);
+    const timerExpired =
+      timer && t.dueDate && parseISO(t.dueDate).getTime() <= now;
     return (
       <ScaleDecorator>
         <Swipeable
@@ -446,10 +540,9 @@ export default function SimpleHomeScreen() {
           renderRightActions={renderRightActions(t)}
           overshootLeft={false}
           overshootRight={false}
-          leftThreshold={40}
-          rightThreshold={40}
-          friction={2}
-          containerStyle={{ flex: 1 }}
+          leftThreshold={30}
+          rightThreshold={30}
+          friction={1.5}
         >
           <GHTouchable
             activeOpacity={0.7}
@@ -461,8 +554,13 @@ export default function SimpleHomeScreen() {
                 paddingHorizontal: cardPadding + 2,
                 opacity: isActive ? 0.8 : 1,
               },
-              o && {
-                borderLeftColor: "#ef4444",
+              o &&
+                !timer && {
+                  borderLeftColor: "#ef4444",
+                  borderLeftWidth: 3,
+                },
+              timer && {
+                borderLeftColor: timerExpired ? "#ef4444" : "#f59e0b",
                 borderLeftWidth: 3,
               },
             ]}
@@ -478,16 +576,46 @@ export default function SimpleHomeScreen() {
                 style={[
                   styles.taskTitle,
                   {
-                    color: o ? "#ef4444" : colors.foreground,
+                    color: timer
+                      ? timerExpired
+                        ? "#ef4444"
+                        : "#f59e0b"
+                      : o
+                        ? "#ef4444"
+                        : colors.foreground,
                     fontSize: scaledFont(14),
                     textAlign,
-                    textDecorationLine: o ? "line-through" : "none",
+                    textDecorationLine: o && !timer ? "line-through" : "none",
                   },
                 ]}
               >
                 {t.title}
               </Text>
-              {di && (
+              {timer ? (
+                <View
+                  style={[
+                    styles.dueDateRow,
+                    textAlign === "center" && { justifyContent: "center" },
+                  ]}
+                >
+                  <Clock
+                    size={11}
+                    color={timerExpired ? "#ef4444" : "#f59e0b"}
+                  />
+                  <Text
+                    style={[
+                      styles.dueDateText,
+                      {
+                        color: timerExpired ? "#ef4444" : "#f59e0b",
+                        fontSize: scaledFont(11),
+                        fontWeight: "600",
+                      },
+                    ]}
+                  >
+                    {getTimerCountdown(t)}
+                  </Text>
+                </View>
+              ) : di ? (
                 <View
                   style={[
                     styles.dueDateRow,
@@ -520,7 +648,7 @@ export default function SimpleHomeScreen() {
                     {di.text}
                   </Text>
                 </View>
-              )}
+              ) : null}
             </View>
           </GHTouchable>
         </Swipeable>
@@ -545,27 +673,31 @@ export default function SimpleHomeScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={["top"]}
+      edges={[]}
     >
       <GoalBanner />
-      <DraggableFlatList
-        data={tasks}
-        keyExtractor={(item) => item.id}
-        renderItem={renderTaskItem}
-        onDragEnd={({ data }: { data: Task[] }) => setTasks(data)}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-        contentContainerStyle={styles.listContent}
-        ListHeaderComponent={<ListHeader />}
-        ListEmptyComponent={
-          <View style={[styles.emptyState, { backgroundColor: colors.card }]}>
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              할일이 없습니다
-            </Text>
-          </View>
-        }
-        ListFooterComponent={<View style={{ height: 80 }} />}
-      />
+      <View style={{ flex: 1 }}>
+        <DraggableFlatList
+          data={tasks}
+          keyExtractor={(item) => item.id}
+          renderItem={renderTaskItem}
+          onDragEnd={({ data }: { data: Task[] }) => setTasks(data)}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          contentContainerStyle={styles.listContent}
+          ListHeaderComponent={<ListHeader />}
+          ListEmptyComponent={
+            <View style={[styles.emptyState, { backgroundColor: colors.card }]}>
+              <Text
+                style={[styles.emptyText, { color: colors.mutedForeground }]}
+              >
+                할일이 없습니다
+              </Text>
+            </View>
+          }
+          ListFooterComponent={<View style={{ height: 20 }} />}
+        />
+      </View>
 
       <TouchableOpacity
         style={[styles.fab, { backgroundColor: colors.primary }]}
@@ -677,6 +809,32 @@ export default function SimpleHomeScreen() {
                   ]}
                 >
                   기한
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.typeBtn,
+                  { borderColor: colors.border },
+                  taskType === "timer" && {
+                    backgroundColor: "#f59e0b",
+                    borderColor: "#f59e0b",
+                  },
+                ]}
+                onPress={() => setTaskType("timer")}
+              >
+                <Clock
+                  size={14}
+                  color={taskType === "timer" ? "#fff" : colors.foreground}
+                />
+                <Text
+                  style={[
+                    styles.typeBtnText,
+                    {
+                      color: taskType === "timer" ? "#fff" : colors.foreground,
+                    },
+                  ]}
+                >
+                  타이머
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1079,12 +1237,119 @@ export default function SimpleHomeScreen() {
               </ScrollView>
             )}
 
+            {taskType === "timer" && (
+              <View style={{ marginBottom: 12 }}>
+                <View
+                  style={[
+                    styles.timeDisplay,
+                    { backgroundColor: "#f59e0b" + "15" },
+                  ]}
+                >
+                  <Clock size={16} color="#f59e0b" />
+                  <Text
+                    style={[
+                      styles.timeDisplayText,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    {timerMinutes}분 타이머
+                  </Text>
+                </View>
+
+                <View style={styles.durationGrid}>
+                  {[5, 10, 15, 25, 30, 45, 50, 60].map((m) => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[
+                        styles.durationBtn,
+                        { borderColor: colors.border },
+                        timerMinutes === m && {
+                          backgroundColor: "#f59e0b",
+                          borderColor: "#f59e0b",
+                        },
+                      ]}
+                      onPress={() => setTimerMinutes(m)}
+                    >
+                      <Text
+                        style={[
+                          styles.durationBtnText,
+                          {
+                            color:
+                              timerMinutes === m ? "#fff" : colors.foreground,
+                          },
+                        ]}
+                      >
+                        {m}분
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                    marginTop: 10,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.mutedForeground,
+                      fontSize: 12,
+                    }}
+                  >
+                    직접 입력:
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        width: 80,
+                        backgroundColor: colors.background,
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        marginBottom: 0,
+                        textAlign: "center",
+                      },
+                    ]}
+                    value={String(timerMinutes)}
+                    onChangeText={(v) => {
+                      const n = parseInt(v);
+                      if (!isNaN(n) && n > 0 && n <= 999) setTimerMinutes(n);
+                      else if (v === "") setTimerMinutes(1);
+                    }}
+                    keyboardType="number-pad"
+                    maxLength={3}
+                  />
+                  <Text
+                    style={{
+                      color: colors.mutedForeground,
+                      fontSize: 12,
+                    }}
+                  >
+                    분
+                  </Text>
+                </View>
+              </View>
+            )}
+
             <TouchableOpacity
-              style={[styles.addBtnModal, { backgroundColor: colors.primary }]}
+              style={[
+                styles.addBtnModal,
+                {
+                  backgroundColor:
+                    taskType === "timer" ? "#f59e0b" : colors.primary,
+                },
+              ]}
               onPress={handleSubmit}
             >
               <Text style={styles.addBtnText}>
-                {editingTask ? "수정" : "추가"}
+                {editingTask
+                  ? "수정"
+                  : taskType === "timer"
+                    ? "타이머 시작"
+                    : "추가"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1307,4 +1572,20 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   addBtnText: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  // 타이머
+  durationGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "center",
+  },
+  durationBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    minWidth: 65,
+    alignItems: "center",
+  },
+  durationBtnText: { fontSize: 14, fontWeight: "500" },
 });

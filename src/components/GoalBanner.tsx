@@ -1,14 +1,9 @@
 import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  StatusBar as RNStatusBar,
-  Platform,
-} from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import { Target } from "lucide-react-native";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import * as Battery from "expo-battery";
 import { useTheme } from "../lib/theme";
 import { useGoalStore } from "../store/goals";
 import {
@@ -20,14 +15,12 @@ import {
   WeatherData,
 } from "../lib/weather";
 
-const STATUS_BAR_HEIGHT =
-  Platform.OS === "android" ? RNStatusBar.currentHeight || 24 : 0;
-
 export default function GoalBanner() {
   const { colors } = useTheme();
   const { pinnedGoals } = useGoalStore();
   const [now, setNow] = useState(new Date());
   const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [battery, setBattery] = useState<number | null>(null);
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -55,17 +48,32 @@ export default function GoalBanner() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const poll = () =>
+      Battery.getBatteryLevelAsync()
+        .then((level) => {
+          if (level >= 0) setBattery(Math.round(level * 100));
+        })
+        .catch(() => {});
+    poll();
+    // 30초마다 폴링 (로컬 네이티브 호출, 비용 없음)
+    const interval = setInterval(poll, 30000);
+    const sub = Battery.addBatteryLevelListener(({ batteryLevel }) => {
+      if (batteryLevel >= 0) setBattery(Math.round(batteryLevel * 100));
+    });
+    return () => {
+      clearInterval(interval);
+      sub.remove();
+    };
+  }, []);
+
   const hour = now.getHours();
   const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
   const minuteStr = String(now.getMinutes()).padStart(2, "0");
-  const timeStr = `${hour12}:${minuteStr}`;
+  // 시계: 12시간제, AM/PM 없음, 앞 0 없음 (1:29, 10:05)
+  const clockStr = `${hour12}:${minuteStr}`;
   const dateStr = format(now, "M/d");
   const dayStr = format(now, "EEE", { locale: ko });
-
-  // 날씨 텍스트: "☀4°" 또는 "🌧비4°"
-  const weatherText = weather
-    ? `${weather.weatherIcon}${weather.weatherDesc || ""}${weather.temperature}°`
-    : "";
 
   return (
     <View
@@ -74,32 +82,101 @@ export default function GoalBanner() {
         {
           backgroundColor: colors.card,
           borderBottomColor: colors.border,
-          marginTop: -STATUS_BAR_HEIGHT,
-          paddingTop: STATUS_BAR_HEIGHT + 4,
+          paddingTop: 4,
         },
       ]}
     >
-      {/* 시간+날짜+날씨+미세먼지 전부 한 줄, 시계 크기 */}
-      <Text
-        style={[styles.mainLine, { color: colors.foreground }]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.5}
-      >
-        {timeStr} {dateStr}({dayStr}) {weatherText}
+      {/* 시계(좌) + 날짜/기온·날씨아이콘 2줄(flex:1) + 미세먼지(고정) + 배터리(고정) */}
+      <View style={styles.mainRow}>
+        {/* 시계 */}
+        <Text style={[styles.clock, { color: colors.foreground }]}>
+          {clockStr}
+        </Text>
+        {/* 날짜+기온 / 날씨아이콘 — 2줄 블록 */}
+        <View style={styles.infoBlock}>
+          <Text
+            style={[styles.infoLine1, { color: colors.foreground }]}
+            numberOfLines={1}
+          >
+            {dateStr}({dayStr}){weather ? ` ${weather.temperature}°` : ""}
+          </Text>
+          {weather && (
+            <Text
+              style={[styles.infoLine2, { color: colors.foreground }]}
+              numberOfLines={1}
+            >
+              오전{weather.morningIcon} 오후{weather.afternoonIcon}
+            </Text>
+          )}
+        </View>
+        {/* 미세먼지: 고정 */}
         {weather && (
-          <>
-            {" "}
-            <Text style={{ color: getDustColor10(weather.pm10), fontSize: 18 }}>
-              미세 {weather.pm10} {getDustLevel10(weather.pm10)}
+          <View style={styles.dustRow}>
+            <Text
+              style={[styles.dustText, { color: getDustColor10(weather.pm10) }]}
+            >
+              미세{weather.pm10}
+              {getDustLevel10(weather.pm10)}
             </Text>
-            {"  "}
-            <Text style={{ color: getDustColor(weather.pm25), fontSize: 18 }}>
-              초미세 {weather.pm25} {getDustLevel(weather.pm25)}
+            <Text
+              style={[
+                styles.dustText,
+                { color: getDustColor(weather.pm25), marginLeft: 3 },
+              ]}
+            >
+              초미세{weather.pm25}
+              {getDustLevel(weather.pm25)}
             </Text>
-          </>
+          </View>
         )}
-      </Text>
+        {/* 배터리: 아이콘 (작게) */}
+        {battery !== null && (
+          <View style={styles.batteryWrap}>
+            <View
+              style={[
+                styles.batteryBody,
+                {
+                  borderColor:
+                    battery <= 20
+                      ? "#ef4444"
+                      : battery <= 50
+                        ? "#f97316"
+                        : colors.mutedForeground,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.batteryFill,
+                  {
+                    width: `${battery}%`,
+                    backgroundColor:
+                      battery <= 20
+                        ? "#ef4444"
+                        : battery <= 50
+                          ? "#f97316"
+                          : "#22c55e",
+                  },
+                ]}
+              />
+              <Text style={styles.batteryLabel}>{battery}%</Text>
+            </View>
+            <View
+              style={[
+                styles.batteryNub,
+                {
+                  backgroundColor:
+                    battery <= 20
+                      ? "#ef4444"
+                      : battery <= 50
+                        ? "#f97316"
+                        : colors.mutedForeground,
+                },
+              ]}
+            />
+          </View>
+        )}
+      </View>
       {weather && weather.alerts.length > 0 && (
         <Text style={styles.alertText}>{weather.alerts.join(" ")}</Text>
       )}
@@ -157,11 +234,75 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     borderBottomWidth: 0.5,
   },
-  mainLine: {
+  mainRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 2,
+  },
+  clock: {
     fontSize: 32,
     fontWeight: "700",
     letterSpacing: -1,
-    marginBottom: 2,
+  },
+  infoBlock: {
+    flex: 1,
+    marginLeft: 6,
+    justifyContent: "center",
+  },
+  infoLine1: {
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: -0.3,
+    lineHeight: 17,
+  },
+  infoLine2: {
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 16,
+  },
+  dustRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 5,
+  },
+  dustText: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  batteryWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 5,
+  },
+  batteryBody: {
+    width: 36,
+    height: 16,
+    borderWidth: 1.5,
+    borderRadius: 3,
+    overflow: "hidden",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  batteryFill: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+  },
+  batteryLabel: {
+    fontSize: 7.5,
+    fontWeight: "800",
+    color: "#fff",
+    zIndex: 1,
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 2,
+  },
+  batteryNub: {
+    width: 2.5,
+    height: 7,
+    borderRadius: 1,
+    marginLeft: 1.5,
   },
   alertText: {
     fontSize: 11,

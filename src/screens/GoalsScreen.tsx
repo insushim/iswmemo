@@ -277,7 +277,7 @@ export default function GoalsScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={["top"]}
+      edges={[]}
     >
       <GoalBanner />
       <View style={styles.header}>
@@ -312,121 +312,125 @@ export default function GoalsScreen() {
         ))}
       </View>
 
-      <DraggableFlatList
-        data={filteredGoals}
-        keyExtractor={(item) => item.id}
-        onDragEnd={({ data }: { data: Goal[] }) => setGoals(data)}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        contentContainerStyle={styles.list}
-        ListHeaderComponent={
-          filteredGoals.length > 0 ? (
-            <View style={styles.hintRow}>
+      <View style={{ flex: 1 }}>
+        <DraggableFlatList
+          data={filteredGoals}
+          keyExtractor={(item) => item.id}
+          onDragEnd={({ data }: { data: Goal[] }) => setGoals(data)}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          contentContainerStyle={styles.list}
+          ListHeaderComponent={
+            filteredGoals.length > 0 ? (
+              <View style={styles.hintRow}>
+                <Text
+                  style={[styles.hintText, { color: colors.mutedForeground }]}
+                >
+                  → 복사 | ← 삭제 | 꾹 드래그
+                </Text>
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={[styles.empty, { backgroundColor: colors.card }]}>
+              <Target size={36} color={colors.mutedForeground} />
               <Text
-                style={[styles.hintText, { color: colors.mutedForeground }]}
+                style={[styles.emptyText, { color: colors.mutedForeground }]}
               >
-                → 복사 | ← 삭제 | 꾹 드래그
+                목표를 추가해보세요
               </Text>
             </View>
-          ) : null
-        }
-        ListEmptyComponent={
-          <View style={[styles.empty, { backgroundColor: colors.card }]}>
-            <Target size={36} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              목표를 추가해보세요
-            </Text>
-          </View>
-        }
-        ListFooterComponent={<View style={{ height: 20 }} />}
-        renderItem={({
-          item: goal,
-          drag,
-          isActive,
-        }: RenderItemParams<Goal>) => {
-          const isPinned = pinnedGoals.some((g) => g.id === goal.id);
-          return (
-            <ScaleDecorator>
-              <Swipeable
-                ref={(ref) => {
-                  if (ref) swipeableRefs.current.set(goal.id, ref);
-                }}
-                renderLeftActions={renderLeftActions(goal)}
-                renderRightActions={renderRightActions(goal)}
-                overshootLeft={false}
-                overshootRight={false}
-                leftThreshold={15}
-                rightThreshold={15}
-              >
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  style={[
-                    styles.goalItem,
-                    {
-                      backgroundColor: colors.card,
-                      borderWidth: isPinned ? 1.5 : 0,
-                      borderColor: isPinned ? colors.primary : "transparent",
-                      padding: cardPadding,
-                      opacity: isActive ? 0.8 : 1,
-                    },
-                  ]}
-                  onPress={() => openEditModal(goal)}
-                  onLongPress={drag}
-                  disabled={isActive}
+          }
+          ListFooterComponent={<View style={{ height: 20 }} />}
+          renderItem={({
+            item: goal,
+            drag,
+            isActive,
+          }: RenderItemParams<Goal>) => {
+            const isPinned = pinnedGoals.some((g) => g.id === goal.id);
+            return (
+              <ScaleDecorator>
+                <Swipeable
+                  ref={(ref) => {
+                    if (ref) swipeableRefs.current.set(goal.id, ref);
+                  }}
+                  renderLeftActions={renderLeftActions(goal)}
+                  renderRightActions={renderRightActions(goal)}
+                  overshootLeft={false}
+                  overshootRight={false}
+                  leftThreshold={15}
+                  rightThreshold={15}
                 >
-                  <View style={styles.goalTop}>
-                    <Text
-                      style={[
-                        styles.badge,
-                        {
-                          color: goal.color,
-                          backgroundColor: (goal.color || "#6366f1") + "15",
-                        },
-                      ]}
-                    >
-                      {typeLabels[goal.type] || goal.type}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.goalTitle,
-                        {
-                          color: colors.foreground,
-                          fontSize: scaledFont(14),
-                          flex: 1,
-                          textAlign,
-                        },
-                      ]}
-                    >
-                      {goal.title}
-                    </Text>
-                    <TouchableOpacity
-                      style={[
-                        styles.pinBtn,
-                        {
-                          backgroundColor: isPinned
-                            ? colors.primary + "20"
-                            : "transparent",
-                        },
-                      ]}
-                      onPress={() => handlePinGoal(goal)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Pin
-                        size={14}
-                        color={
-                          isPinned ? colors.primary : colors.mutedForeground
-                        }
-                        fill={isPinned ? colors.primary : "none"}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-              </Swipeable>
-            </ScaleDecorator>
-          );
-        }}
-      />
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={[
+                      styles.goalItem,
+                      {
+                        backgroundColor: colors.card,
+                        borderWidth: isPinned ? 1.5 : 0,
+                        borderColor: isPinned ? colors.primary : "transparent",
+                        padding: cardPadding,
+                        opacity: isActive ? 0.8 : 1,
+                      },
+                    ]}
+                    onPress={() => openEditModal(goal)}
+                    onLongPress={drag}
+                    disabled={isActive}
+                  >
+                    <View style={styles.goalTop}>
+                      <Text
+                        style={[
+                          styles.badge,
+                          {
+                            color: goal.color,
+                            backgroundColor: (goal.color || "#6366f1") + "15",
+                          },
+                        ]}
+                      >
+                        {typeLabels[goal.type] || goal.type}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.goalTitle,
+                          {
+                            color: colors.foreground,
+                            fontSize: scaledFont(14),
+                            flex: 1,
+                            textAlign,
+                          },
+                        ]}
+                      >
+                        {goal.title}
+                      </Text>
+                      <TouchableOpacity
+                        style={[
+                          styles.pinBtn,
+                          {
+                            backgroundColor: isPinned
+                              ? colors.primary + "20"
+                              : "transparent",
+                          },
+                        ]}
+                        onPress={() => handlePinGoal(goal)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Pin
+                          size={14}
+                          color={
+                            isPinned ? colors.primary : colors.mutedForeground
+                          }
+                          fill={isPinned ? colors.primary : "none"}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                </Swipeable>
+              </ScaleDecorator>
+            );
+          }}
+        />
+      </View>
 
       {/* 추가/수정 모달 */}
       <Modal visible={showModal} animationType="slide" transparent>

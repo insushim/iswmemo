@@ -221,6 +221,7 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
+      edges={[]}
     >
       <GoalBanner />
       <View style={styles.header}>

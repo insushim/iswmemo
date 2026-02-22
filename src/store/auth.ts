@@ -1,9 +1,9 @@
-import { create } from 'zustand';
-import { Platform, NativeModules } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
-import { User } from '../types';
-import { api } from '../lib/api';
-import { API_URL } from '../lib/config';
+import { create } from "zustand";
+import { Platform, NativeModules } from "react-native";
+import * as SecureStore from "expo-secure-store";
+import { User } from "../types";
+import { api } from "../lib/api";
+import { API_URL } from "../lib/config";
 
 const { AlarmModule } = NativeModules;
 
@@ -21,7 +21,7 @@ interface AuthState {
 }
 
 // SecureStore 키
-const TOKEN_KEY = 'auth_token';
+const TOKEN_KEY = "auth_token";
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
@@ -37,8 +37,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       // 새로운 모바일 전용 JWT 인증 API 사용
       const response = await fetch(`${API_URL}/api/auth/mobile`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
@@ -49,8 +49,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await SecureStore.setItemAsync(TOKEN_KEY, data.token);
 
         // 네이티브 알람에서 사용할 토큰 저장
-        if (Platform.OS === 'android' && AlarmModule) {
-          try { await AlarmModule.saveAuthToken(data.token); } catch {}
+        if (Platform.OS === "android" && AlarmModule) {
+          try {
+            await AlarmModule.saveAuthToken(data.token);
+          } catch {}
         }
 
         // API 클라이언트에도 토큰 동기화
@@ -60,11 +62,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ user: data.user, isAuthenticated: true });
         return true;
       } else {
-        if (__DEV__) console.error('Login failed:', data.error);
+        if (__DEV__) console.error("Login failed:", data.error);
         return false;
       }
     } catch (error) {
-      if (__DEV__) console.error('Login error:', error);
+      if (__DEV__) console.error("Login error:", error);
       return false;
     } finally {
       set({ isLoading: false });
@@ -76,8 +78,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ isLoading: true });
 
       const response = await fetch(`${API_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password }),
       });
 
@@ -87,7 +89,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       return false;
     } catch (error) {
-      if (__DEV__) console.error('Register error:', error);
+      if (__DEV__) console.error("Register error:", error);
       return false;
     } finally {
       set({ isLoading: false });
@@ -99,8 +101,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await SecureStore.deleteItemAsync(TOKEN_KEY);
 
     // 네이티브 알람 토큰도 삭제
-    if (Platform.OS === 'android' && AlarmModule) {
-      try { await AlarmModule.saveAuthToken(''); } catch {}
+    if (Platform.OS === "android" && AlarmModule) {
+      try {
+        await AlarmModule.saveAuthToken("");
+      } catch {}
     }
 
     // API 클라이언트 토큰도 삭제
@@ -119,19 +123,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (token) {
         // 토큰으로 사용자 정보 검증
         const response = await fetch(`${API_URL}/api/auth/mobile/verify`, {
-          method: 'GET',
+          method: "GET",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
           },
         });
 
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.user) {
+            // API 클라이언트에 토큰 동기화 (앱 재시작 시 필수)
+            await api.setToken(token);
             // 네이티브 알람에서 사용할 토큰 동기화
-            if (Platform.OS === 'android' && AlarmModule) {
-              try { await AlarmModule.saveAuthToken(token); } catch {}
+            if (Platform.OS === "android" && AlarmModule) {
+              try {
+                await AlarmModule.saveAuthToken(token);
+              } catch {}
             }
             set({ user: data.user, isAuthenticated: true });
             return;
@@ -144,7 +152,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       set({ user: null, isAuthenticated: false });
     } catch (error) {
-      if (__DEV__) console.error('Auth check error:', error);
+      if (__DEV__) console.error("Auth check error:", error);
       set({ user: null, isAuthenticated: false });
     } finally {
       set({ isLoading: false });

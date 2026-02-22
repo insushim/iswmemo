@@ -156,7 +156,7 @@ export default function RoutinesScreen() {
   const getTypeInfo = (type: string) => ROUTINE_TYPES.find((t) => t.value === type) || ROUTINE_TYPES[4];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={[]}>
       <GoalBanner />
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.foreground }]}>루틴</Text>

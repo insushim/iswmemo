@@ -50,7 +50,7 @@ import { ko } from "date-fns/locale";
 import * as SecureStore from "expo-secure-store";
 import { useTheme } from "../lib/theme";
 import { api } from "../lib/api";
-import { Routine } from "../types";
+import { Routine, Task } from "../types";
 import { useSettingsStore } from "../store/settings";
 import { scheduleTaskAlarm, cancelTaskAlarm } from "../lib/taskAlarm";
 import GoalBanner from "../components/GoalBanner";
@@ -106,6 +106,11 @@ export default function ScheduleScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [eventCalendarMonth, setEventCalendarMonth] = useState(new Date());
   const [showTopCalendar, setShowTopCalendar] = useState(false);
+  const [editingHour, setEditingHour] = useState(false);
+  const [editingMinute, setEditingMinute] = useState(false);
+  const [hourInput, setHourInput] = useState("");
+  const [minuteInput, setMinuteInput] = useState("");
+  const [deadlineTasks, setDeadlineTasks] = useState<Task[]>([]);
   const [topCalendarMonth, setTopCalendarMonth] = useState(new Date());
   const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
   const hasLoadedRef = useRef(false);
@@ -150,12 +155,26 @@ export default function ScheduleScreen() {
     }
   };
 
+  const fetchTasks = async () => {
+    try {
+      const tasksRes = await api.getTasks();
+      if (Array.isArray(tasksRes)) {
+        const withDueDate = tasksRes.filter(
+          (t: Task) => !t.isCompleted && t.dueDate,
+        );
+        setDeadlineTasks(withDueDate);
+      }
+    } catch {}
+  };
+
   useFocusEffect(
     useCallback(() => {
       if (!hasLoadedRef.current) {
         hasLoadedRef.current = true;
         fetchSchedules();
       }
+      // 기한 할일은 탭 전환 시마다 새로 가져옴
+      fetchTasks();
     }, []),
   );
 
@@ -184,7 +203,10 @@ export default function ScheduleScreen() {
         nextState === "active"
       ) {
         // 삭제 먼저, 그 다음 fetch (race condition 방지)
-        processPendingScheduleDelete().then(() => fetchSchedules());
+        processPendingScheduleDelete().then(() => {
+          fetchSchedules();
+          fetchTasks();
+        });
       }
       appStateRef.current = nextState;
     });
@@ -193,7 +215,7 @@ export default function ScheduleScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchSchedules();
+    await Promise.all([fetchSchedules(), fetchTasks()]);
     setRefreshing(false);
   };
 
@@ -262,8 +284,24 @@ export default function ScheduleScreen() {
     if (isSubmitting) return;
     setIsSubmitting(true);
 
-    const hour24 = to24Hour(eventHour, eventIsAM);
-    const startTime = `${String(hour24).padStart(2, "0")}:${String(eventMinute).padStart(2, "0")}`;
+    // 직접 입력 중인 시/분 값 flush
+    let finalHour = eventHour;
+    let finalMinute = eventMinute;
+    if (editingHour) {
+      const v = parseInt(hourInput);
+      if (v >= 1 && v <= 12) finalHour = v;
+      setEventHour(finalHour);
+      setEditingHour(false);
+    }
+    if (editingMinute) {
+      const v = parseInt(minuteInput);
+      if (v >= 0 && v <= 59) finalMinute = v;
+      setEventMinute(finalMinute);
+      setEditingMinute(false);
+    }
+
+    const hour24 = to24Hour(finalHour, eventIsAM);
+    const startTime = `${String(hour24).padStart(2, "0")}:${String(finalMinute).padStart(2, "0")}`;
     const dateStr = format(eventDate, "yyyy-MM-dd");
     const meta: ScheduleMeta = {
       date: dateStr,
@@ -474,6 +512,17 @@ export default function ScheduleScreen() {
     return dt.getTime() < Date.now();
   };
 
+  // 선택된 날짜의 기한 할일
+  const todayDeadlineTasks = deadlineTasks
+    .filter((t) => {
+      if (!t.dueDate) return false;
+      return (
+        format(parseISO(t.dueDate), "yyyy-MM-dd") ===
+        format(selectedDate, "yyyy-MM-dd")
+      );
+    })
+    .sort((a, b) => (a.dueTime || "").localeCompare(b.dueTime || ""));
+
   const allDisplayed = [
     ...todaySchedules,
     ...(format(selectedDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
@@ -583,7 +632,7 @@ export default function ScheduleScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={["top"]}
+      edges={[]}
     >
       <GoalBanner />
       <View style={styles.header}>
@@ -710,11 +759,18 @@ export default function ScheduleScreen() {
               const isSelected = isSameDay(day, selectedDate);
               const isToday = isSameDay(day, new Date());
               const dayOfWeek = getDay(day);
-              // 해당 날짜에 일정 있는지 확인
-              const hasEvent = schedules.some((s) => {
-                const m = parseScheduleMeta(s.description);
-                return m?.date === format(day, "yyyy-MM-dd");
-              });
+              // 해당 날짜에 일정 또는 기한 할일 있는지 확인
+              const dayStr = format(day, "yyyy-MM-dd");
+              const hasEvent =
+                schedules.some((s) => {
+                  const m = parseScheduleMeta(s.description);
+                  return m?.date === dayStr;
+                }) ||
+                deadlineTasks.some(
+                  (t) =>
+                    t.dueDate &&
+                    format(parseISO(t.dueDate), "yyyy-MM-dd") === dayStr,
+                );
               return (
                 <TouchableOpacity
                   key={day.toISOString()}
@@ -759,38 +815,115 @@ export default function ScheduleScreen() {
         </View>
       )}
 
-      <DraggableFlatList
-        data={allDisplayed}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        onDragEnd={({ data }: { data: Routine[] }) => {
-          // Merge reordered items back
-          const ids = new Set(data.map((d) => d.id));
-          setSchedules((prev) => [
-            ...data,
-            ...prev.filter((s) => !ids.has(s.id)),
-          ]);
-        }}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-        contentContainerStyle={styles.list}
-        ListHeaderComponent={
-          allDisplayed.length > 0 ? (
-            <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
-              → 복사 | ← 삭제 | 꾹 드래그
-            </Text>
-          ) : null
-        }
-        ListEmptyComponent={
-          <View style={[styles.empty, { backgroundColor: colors.card }]}>
-            <Clock size={36} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              이 날 일정이 없습니다
-            </Text>
-          </View>
-        }
-        ListFooterComponent={<View style={{ height: 20 }} />}
-      />
+      <View style={{ flex: 1 }}>
+        <DraggableFlatList
+          data={allDisplayed}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          onDragEnd={({ data }: { data: Routine[] }) => {
+            // Merge reordered items back
+            const ids = new Set(data.map((d) => d.id));
+            setSchedules((prev) => [
+              ...data,
+              ...prev.filter((s) => !ids.has(s.id)),
+            ]);
+          }}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          contentContainerStyle={styles.list}
+          ListHeaderComponent={
+            allDisplayed.length > 0 ? (
+              <Text
+                style={[styles.hintText, { color: colors.mutedForeground }]}
+              >
+                → 복사 | ← 삭제 | 꾹 드래그
+              </Text>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={[styles.empty, { backgroundColor: colors.card }]}>
+              <Clock size={36} color={colors.mutedForeground} />
+              <Text
+                style={[styles.emptyText, { color: colors.mutedForeground }]}
+              >
+                이 날 일정이 없습니다
+              </Text>
+            </View>
+          }
+          ListFooterComponent={
+            <>
+              {todayDeadlineTasks.length > 0 && (
+                <View style={{ marginTop: 8 }}>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: "600",
+                      color: colors.mutedForeground,
+                      paddingHorizontal: 4,
+                      marginBottom: 6,
+                    }}
+                  >
+                    기한 할일
+                  </Text>
+                  {todayDeadlineTasks.map((task) => {
+                    const taskPast =
+                      task.dueDate &&
+                      isBefore(parseISO(task.dueDate), new Date());
+                    return (
+                      <View
+                        key={task.id}
+                        style={[
+                          styles.scheduleCard,
+                          {
+                            backgroundColor: colors.card,
+                            padding: cardPadding,
+                            borderLeftColor: taskPast ? "#ef4444" : "#f59e0b",
+                            borderLeftWidth: 3,
+                          },
+                        ]}
+                      >
+                        <View style={styles.scheduleCenter}>
+                          <Text
+                            style={[
+                              styles.scheduleName,
+                              {
+                                color: taskPast ? "#ef4444" : colors.foreground,
+                                fontSize: scaledFont(14),
+                                textAlign,
+                                textDecorationLine: taskPast
+                                  ? "line-through"
+                                  : "none",
+                              },
+                            ]}
+                          >
+                            {task.title}
+                          </Text>
+                        </View>
+                        <View style={styles.scheduleRight}>
+                          {task.dueTime && (
+                            <Text
+                              style={[
+                                styles.timeText,
+                                {
+                                  color: taskPast ? "#ef4444" : colors.primary,
+                                  fontSize: scaledFont(12),
+                                },
+                              ]}
+                            >
+                              {formatTime12(task.dueTime)}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+              <View style={{ height: 20 }} />
+            </>
+          }
+        />
+      </View>
 
       {/* 추가/수정 모달 */}
       <Modal
@@ -1021,32 +1154,68 @@ export default function ScheduleScreen() {
                   >
                     <TouchableOpacity
                       style={styles.wheelArrow}
-                      onPress={() =>
-                        setEventHour((prev) => (prev === 12 ? 1 : prev + 1))
-                      }
+                      onPress={() => {
+                        setEditingHour(false);
+                        setEventHour((prev) => (prev === 12 ? 1 : prev + 1));
+                      }}
                     >
                       <ChevronUp size={20} color={colors.mutedForeground} />
                     </TouchableOpacity>
-                    <View
+                    <TouchableOpacity
                       style={[
                         styles.wheelValue,
                         { backgroundColor: colors.primary + "15" },
                       ]}
+                      onPress={() => {
+                        setEditingHour(true);
+                        setHourInput(String(eventHour));
+                      }}
                     >
-                      <Text
-                        style={[
-                          styles.wheelValueText,
-                          { color: colors.primary },
-                        ]}
-                      >
-                        {eventHour}
-                      </Text>
-                    </View>
+                      {editingHour ? (
+                        <TextInput
+                          style={[
+                            styles.wheelValueText,
+                            {
+                              color: colors.primary,
+                              padding: 0,
+                              textAlign: "center",
+                              minWidth: 30,
+                            },
+                          ]}
+                          value={hourInput}
+                          onChangeText={setHourInput}
+                          keyboardType="number-pad"
+                          maxLength={2}
+                          autoFocus
+                          selectTextOnFocus
+                          onBlur={() => {
+                            const v = parseInt(hourInput);
+                            if (v >= 1 && v <= 12) setEventHour(v);
+                            setEditingHour(false);
+                          }}
+                          onSubmitEditing={() => {
+                            const v = parseInt(hourInput);
+                            if (v >= 1 && v <= 12) setEventHour(v);
+                            setEditingHour(false);
+                          }}
+                        />
+                      ) : (
+                        <Text
+                          style={[
+                            styles.wheelValueText,
+                            { color: colors.primary },
+                          ]}
+                        >
+                          {eventHour}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.wheelArrow}
-                      onPress={() =>
-                        setEventHour((prev) => (prev === 1 ? 12 : prev - 1))
-                      }
+                      onPress={() => {
+                        setEditingHour(false);
+                        setEventHour((prev) => (prev === 1 ? 12 : prev - 1));
+                      }}
                     >
                       <ChevronDown size={20} color={colors.mutedForeground} />
                     </TouchableOpacity>
@@ -1062,32 +1231,68 @@ export default function ScheduleScreen() {
                   >
                     <TouchableOpacity
                       style={styles.wheelArrow}
-                      onPress={() =>
-                        setEventMinute((prev) => (prev === 59 ? 0 : prev + 1))
-                      }
+                      onPress={() => {
+                        setEditingMinute(false);
+                        setEventMinute((prev) => (prev === 59 ? 0 : prev + 1));
+                      }}
                     >
                       <ChevronUp size={20} color={colors.mutedForeground} />
                     </TouchableOpacity>
-                    <View
+                    <TouchableOpacity
                       style={[
                         styles.wheelValue,
                         { backgroundColor: colors.primary + "15" },
                       ]}
+                      onPress={() => {
+                        setEditingMinute(true);
+                        setMinuteInput(String(eventMinute).padStart(2, "0"));
+                      }}
                     >
-                      <Text
-                        style={[
-                          styles.wheelValueText,
-                          { color: colors.primary },
-                        ]}
-                      >
-                        {String(eventMinute).padStart(2, "0")}
-                      </Text>
-                    </View>
+                      {editingMinute ? (
+                        <TextInput
+                          style={[
+                            styles.wheelValueText,
+                            {
+                              color: colors.primary,
+                              padding: 0,
+                              textAlign: "center",
+                              minWidth: 30,
+                            },
+                          ]}
+                          value={minuteInput}
+                          onChangeText={setMinuteInput}
+                          keyboardType="number-pad"
+                          maxLength={2}
+                          autoFocus
+                          selectTextOnFocus
+                          onBlur={() => {
+                            const v = parseInt(minuteInput);
+                            if (v >= 0 && v <= 59) setEventMinute(v);
+                            setEditingMinute(false);
+                          }}
+                          onSubmitEditing={() => {
+                            const v = parseInt(minuteInput);
+                            if (v >= 0 && v <= 59) setEventMinute(v);
+                            setEditingMinute(false);
+                          }}
+                        />
+                      ) : (
+                        <Text
+                          style={[
+                            styles.wheelValueText,
+                            { color: colors.primary },
+                          ]}
+                        >
+                          {String(eventMinute).padStart(2, "0")}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.wheelArrow}
-                      onPress={() =>
-                        setEventMinute((prev) => (prev === 0 ? 59 : prev - 1))
-                      }
+                      onPress={() => {
+                        setEditingMinute(false);
+                        setEventMinute((prev) => (prev === 0 ? 59 : prev - 1));
+                      }}
                     >
                       <ChevronDown size={20} color={colors.mutedForeground} />
                     </TouchableOpacity>
