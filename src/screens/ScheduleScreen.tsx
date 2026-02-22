@@ -860,51 +860,158 @@ export default function ScheduleScreen() {
                       task.dueDate &&
                       isBefore(parseISO(task.dueDate), new Date());
                     return (
-                      <View
+                      <Swipeable
                         key={task.id}
-                        style={[
-                          styles.scheduleCard,
-                          {
-                            backgroundColor: colors.card,
-                            padding: cardPadding,
-                            borderLeftColor: taskPast ? "#ef4444" : "#f59e0b",
-                            borderLeftWidth: 3,
-                          },
-                        ]}
+                        ref={(ref) => {
+                          if (ref)
+                            swipeableRefs.current.set(`task-${task.id}`, ref);
+                        }}
+                        renderLeftActions={(progress, dragX) => {
+                          const scale = dragX.interpolate({
+                            inputRange: [0, 80],
+                            outputRange: [0.5, 1],
+                            extrapolate: "clamp",
+                          });
+                          return (
+                            <Animated.View
+                              style={[
+                                styles.swipeCopy,
+                                { transform: [{ scale }] },
+                              ]}
+                            >
+                              <TouchableOpacity
+                                style={styles.swipeCopyBtn}
+                                onPress={() => {
+                                  const time = task.dueTime
+                                    ? formatTime12(task.dueTime) + " "
+                                    : "";
+                                  Clipboard.setStringAsync(
+                                    `${time}${task.title}`,
+                                  );
+                                  swipeableRefs.current
+                                    .get(`task-${task.id}`)
+                                    ?.close();
+                                }}
+                              >
+                                <Copy size={20} color="#fff" />
+                                <Text style={styles.swipeCopyText}>복사</Text>
+                              </TouchableOpacity>
+                            </Animated.View>
+                          );
+                        }}
+                        renderRightActions={(progress, dragX) => {
+                          const scale = dragX.interpolate({
+                            inputRange: [-80, 0],
+                            outputRange: [1, 0.5],
+                            extrapolate: "clamp",
+                          });
+                          return (
+                            <Animated.View
+                              style={[
+                                styles.swipeDelete,
+                                { transform: [{ scale }] },
+                              ]}
+                            >
+                              <TouchableOpacity
+                                style={styles.swipeDeleteBtn}
+                                onPress={() => {
+                                  Alert.alert(
+                                    "삭제",
+                                    `"${task.title}" 삭제할까요?`,
+                                    [
+                                      {
+                                        text: "취소",
+                                        style: "cancel",
+                                        onPress: () =>
+                                          swipeableRefs.current
+                                            .get(`task-${task.id}`)
+                                            ?.close(),
+                                      },
+                                      {
+                                        text: "삭제",
+                                        style: "destructive",
+                                        onPress: async () => {
+                                          setDeadlineTasks((prev) =>
+                                            prev.filter(
+                                              (t) => t.id !== task.id,
+                                            ),
+                                          );
+                                          try {
+                                            await api.deleteTask(task.id);
+                                          } catch {
+                                            fetchTasks();
+                                            Alert.alert(
+                                              "오류",
+                                              "삭제에 실패했습니다",
+                                            );
+                                          }
+                                        },
+                                      },
+                                    ],
+                                  );
+                                }}
+                              >
+                                <Trash2 size={20} color="#fff" />
+                                <Text style={styles.swipeDeleteText}>삭제</Text>
+                              </TouchableOpacity>
+                            </Animated.View>
+                          );
+                        }}
+                        overshootLeft={false}
+                        overshootRight={false}
+                        leftThreshold={40}
+                        rightThreshold={40}
+                        friction={2}
                       >
-                        <View style={styles.scheduleCenter}>
-                          <Text
-                            style={[
-                              styles.scheduleName,
-                              {
-                                color: taskPast ? "#ef4444" : colors.foreground,
-                                fontSize: scaledFont(14),
-                                textAlign,
-                                textDecorationLine: taskPast
-                                  ? "line-through"
-                                  : "none",
-                              },
-                            ]}
-                          >
-                            {task.title}
-                          </Text>
-                        </View>
-                        <View style={styles.scheduleRight}>
-                          {task.dueTime && (
+                        <View
+                          style={[
+                            styles.scheduleCard,
+                            {
+                              backgroundColor: colors.card,
+                              padding: cardPadding,
+                              borderLeftColor: taskPast ? "#ef4444" : "#f59e0b",
+                              borderLeftWidth: 3,
+                            },
+                          ]}
+                        >
+                          <View style={styles.scheduleCenter}>
                             <Text
                               style={[
-                                styles.timeText,
+                                styles.scheduleName,
                                 {
-                                  color: taskPast ? "#ef4444" : colors.primary,
-                                  fontSize: scaledFont(12),
+                                  color: taskPast
+                                    ? "#ef4444"
+                                    : colors.foreground,
+                                  fontSize: scaledFont(14),
+                                  textAlign,
+                                  textDecorationLine: taskPast
+                                    ? "line-through"
+                                    : "none",
                                 },
                               ]}
                             >
-                              {formatTime12(task.dueTime)}
+                              {task.title}
                             </Text>
-                          )}
+                          </View>
+                          <View style={styles.scheduleRight}>
+                            {task.dueTime && (
+                              <Text
+                                style={[
+                                  styles.timeText,
+                                  {
+                                    color: taskPast
+                                      ? "#ef4444"
+                                      : colors.primary,
+                                    fontSize: scaledFont(12),
+                                  },
+                                ]}
+                              >
+                                {formatTime12(task.dueTime)}
+                              </Text>
+                            )}
+                          </View>
                         </View>
-                      </View>
+                      </Swipeable>
                     );
                   })}
                 </View>
