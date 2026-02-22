@@ -290,8 +290,8 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   batteryLabel: {
-    fontSize: 6.5,
-    fontWeight: "800",
+    fontSize: 9,
+    fontWeight: "900",
     color: "#fff",
     zIndex: 1,
     textShadowColor: "rgba(0,0,0,0.6)",
