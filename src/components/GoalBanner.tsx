@@ -275,8 +275,8 @@ const styles = StyleSheet.create({
     marginLeft: 5,
   },
   batteryBody: {
-    width: 36,
-    height: 16,
+    width: 28,
+    height: 14,
     borderWidth: 1.5,
     borderRadius: 3,
     overflow: "hidden",
@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   batteryLabel: {
-    fontSize: 7.5,
+    fontSize: 6.5,
     fontWeight: "800",
     color: "#fff",
     zIndex: 1,
@@ -299,8 +299,8 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
   },
   batteryNub: {
-    width: 2.5,
-    height: 7,
+    width: 2,
+    height: 6,
     borderRadius: 1,
     marginLeft: 1.5,
   },
