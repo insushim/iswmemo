@@ -628,6 +628,16 @@ export default function ScheduleScreen() {
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.foreground }]}>일정</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {allDisplayed.length > 0 && (
+            <Text
+              style={[
+                styles.hintText,
+                { color: colors.mutedForeground, marginBottom: 0 },
+              ]}
+            >
+              →복사 | ←삭제 | 꾹 드래그
+            </Text>
+          )}
           <TouchableOpacity
             style={[
               styles.addBtn,
@@ -821,15 +831,7 @@ export default function ScheduleScreen() {
           refreshing={refreshing}
           onRefresh={onRefresh}
           contentContainerStyle={styles.list}
-          ListHeaderComponent={
-            allDisplayed.length > 0 ? (
-              <Text
-                style={[styles.hintText, { color: colors.mutedForeground }]}
-              >
-                → 복사 | ← 삭제 | 꾹 드래그
-              </Text>
-            ) : null
-          }
+          ListHeaderComponent={null}
           ListEmptyComponent={
             <View style={[styles.empty, { backgroundColor: colors.card }]}>
               <Clock size={36} color={colors.mutedForeground} />

@@ -515,12 +515,30 @@ export default function HabitsScreen() {
     >
       <GoalBanner />
       <View style={styles.header}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={[styles.title, { color: colors.foreground }]}>습관</Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            오늘 {completedCount}/{habits.length} 완료
-            {routines.length > 0 ? ` · 루틴 ${routines.length}` : ""}
-          </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+              오늘 {completedCount}/{habits.length} 완료
+              {routines.length > 0 ? ` · 루틴 ${routines.length}` : ""}
+            </Text>
+            {combinedList.length > 0 && (
+              <Text
+                style={[
+                  styles.hintText,
+                  { color: colors.mutedForeground, marginBottom: 0 },
+                ]}
+              >
+                →복사 | ←삭제 | 꾹 드래그
+              </Text>
+            )}
+          </View>
         </View>
         <TouchableOpacity
           style={[styles.addBtn, { backgroundColor: colors.primary }]}
@@ -559,15 +577,7 @@ export default function HabitsScreen() {
             </View>
           }
           ListFooterComponent={<View style={{ height: 20 }} />}
-          ListHeaderComponent={
-            combinedList.length > 0 ? (
-              <Text
-                style={[styles.hintText, { color: colors.mutedForeground }]}
-              >
-                → 복사 | ← 삭제 | 꾹 드래그
-              </Text>
-            ) : null
-          }
+          ListHeaderComponent={null}
           renderItem={({
             item,
             drag,

@@ -290,7 +290,7 @@ export default function GoalsScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.filterRow}>
+      <View style={[styles.filterRow, { alignItems: "center" }]}>
         {(["all", "LIFE", "LONG", "SHORT"] as const).map((f) => (
           <TouchableOpacity
             key={f}
@@ -310,6 +310,16 @@ export default function GoalsScreen() {
             </Text>
           </TouchableOpacity>
         ))}
+        {filteredGoals.length > 0 && (
+          <Text
+            style={[
+              styles.hintText,
+              { color: colors.mutedForeground, marginLeft: "auto" },
+            ]}
+          >
+            →복사 | ←삭제 | 꾹 드래그
+          </Text>
+        )}
       </View>
 
       <View style={{ flex: 1 }}>
@@ -321,17 +331,7 @@ export default function GoalsScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
           contentContainerStyle={styles.list}
-          ListHeaderComponent={
-            filteredGoals.length > 0 ? (
-              <View style={styles.hintRow}>
-                <Text
-                  style={[styles.hintText, { color: colors.mutedForeground }]}
-                >
-                  → 복사 | ← 삭제 | 꾹 드래그
-                </Text>
-              </View>
-            ) : null
-          }
+          ListHeaderComponent={null}
           ListEmptyComponent={
             <View style={[styles.empty, { backgroundColor: colors.card }]}>
               <Target size={36} color={colors.mutedForeground} />

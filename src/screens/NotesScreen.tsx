@@ -272,6 +272,21 @@ export default function NotesScreen() {
       {/* 헤더 */}
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.foreground }]}>메모</Text>
+        {filteredNotes.length > 0 && (
+          <Text
+            style={[
+              styles.hintText,
+              {
+                color: colors.mutedForeground,
+                flex: 1,
+                textAlign: "right",
+                marginHorizontal: 8,
+              },
+            ]}
+          >
+            →복사 | ←삭제 | 꾹 드래그
+          </Text>
+        )}
         <TouchableOpacity
           style={[styles.addButton, { backgroundColor: colors.primary }]}
           onPress={() => setShowModal(true)}
@@ -303,17 +318,7 @@ export default function NotesScreen() {
           onRefresh={onRefresh}
           onDragEnd={({ data }: { data: Note[] }) => setNotes(data)}
           contentContainerStyle={{ paddingHorizontal: 20 }}
-          ListHeaderComponent={
-            filteredNotes.length > 0 ? (
-              <View style={styles.hintRow}>
-                <Text
-                  style={[styles.hintText, { color: colors.mutedForeground }]}
-                >
-                  → 복사 | ← 삭제 | 꾹 드래그
-                </Text>
-              </View>
-            ) : null
-          }
+          ListHeaderComponent={null}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <StickyNote size={48} color={colors.mutedForeground} />
@@ -356,19 +361,23 @@ export default function NotesScreen() {
                   onLongPress={drag}
                   disabled={isActive}
                 >
-                  <Text
-                    style={[
-                      styles.noteContent,
-                      { fontSize: scaledFont(13), textAlign },
-                    ]}
+                  <View
+                    style={{ flexDirection: "row", alignItems: "flex-end" }}
                   >
-                    {note.content || note.title}
-                  </Text>
-                  <Text style={styles.noteDate}>
-                    {format(new Date(note.updatedAt), "M월 d일", {
-                      locale: ko,
-                    })}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.noteContent,
+                        { fontSize: scaledFont(13), textAlign },
+                      ]}
+                    >
+                      {note.content || note.title}
+                    </Text>
+                    <Text style={styles.noteDate}>
+                      {format(new Date(note.updatedAt), "M월 d일", {
+                        locale: ko,
+                      })}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               </Swipeable>
             </ScaleDecorator>
@@ -525,8 +534,9 @@ const styles = StyleSheet.create({
   noteDate: {
     fontSize: 10,
     color: "#6b7280",
-    marginTop: 8,
+    marginLeft: 6,
     textAlign: "right",
+    flexShrink: 0,
   },
   modalOverlay: {
     flex: 1,
