@@ -515,31 +515,16 @@ export default function HabitsScreen() {
     >
       <GoalBanner />
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: colors.foreground }]}>습관</Text>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              오늘 {completedCount}/{habits.length} 완료
-              {routines.length > 0 ? ` · 루틴 ${routines.length}` : ""}
-            </Text>
-            {combinedList.length > 0 && (
-              <Text
-                style={[
-                  styles.hintText,
-                  { color: colors.mutedForeground, marginBottom: 0 },
-                ]}
-              >
-                →복사 | ←삭제 | 꾹 드래그
-              </Text>
-            )}
-          </View>
-        </View>
+        <Text style={[styles.title, { color: colors.foreground }]}>습관</Text>
+        <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+          오늘{completedCount}/{habits.length}완료
+          {routines.length > 0 ? ` 루틴${routines.length}` : ""}
+        </Text>
+        {combinedList.length > 0 && (
+          <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
+            →복사 ←삭제 꾹드래그
+          </Text>
+        )}
         <TouchableOpacity
           style={[styles.addBtn, { backgroundColor: colors.primary }]}
           onPress={openAddModal}
@@ -1048,17 +1033,17 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 6,
+    gap: 6,
   },
-  title: { fontSize: 20, fontWeight: "700" },
-  subtitle: { fontSize: 12, marginTop: 2 },
+  title: { fontSize: 16, fontWeight: "700" },
+  subtitle: { fontSize: 11 },
   addBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1189,10 +1174,9 @@ const styles = StyleSheet.create({
   submitBtn: { padding: 14, borderRadius: 10, alignItems: "center" },
   submitText: { color: "#fff", fontSize: 15, fontWeight: "600" },
   hintText: {
-    fontSize: 10,
+    fontSize: 9,
+    flex: 1,
     textAlign: "right",
-    paddingHorizontal: 4,
-    marginBottom: 4,
   },
   swipeDelete: {
     justifyContent: "center",
