@@ -136,6 +136,29 @@ async function loadPersistedCache(): Promise<void> {
   } catch {}
 }
 
+// 타임아웃 유틸: Promise가 ms 내 resolve 안 되면 reject
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label = "",
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`Timeout: ${label} (${ms}ms)`)),
+      ms,
+    );
+    promise
+      .then((v) => {
+        clearTimeout(timer);
+        resolve(v);
+      })
+      .catch((e) => {
+        clearTimeout(timer);
+        reject(e);
+      });
+  });
+}
+
 // 영구 캐시 저장
 function persistCache(): void {
   if (cachedWeather) {
@@ -161,15 +184,21 @@ function persistCache(): void {
 let persistedLoaded = false;
 
 // === 통합 날씨 조회 (백엔드 프록시 경유) ===
-export async function getWeather(): Promise<WeatherData | null> {
+export async function getWeather(
+  forceRefresh = false,
+): Promise<WeatherData | null> {
   // 첫 호출: 영구 캐시 로드
   if (!persistedLoaded) {
     persistedLoaded = true;
     await loadPersistedCache();
   }
 
-  // 메모리 캐시 유효하면 즉시 반환
-  if (cachedWeather && Date.now() - cacheTimestamp < CACHE_DURATION)
+  // 메모리 캐시 유효하면 즉시 반환 (forceRefresh 시 무시)
+  if (
+    !forceRefresh &&
+    cachedWeather &&
+    Date.now() - cacheTimestamp < CACHE_DURATION
+  )
     return cachedWeather;
 
   try {
@@ -180,11 +209,19 @@ export async function getWeather(): Promise<WeatherData | null> {
     let dong = "";
 
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await withTimeout(
+        Location.requestForegroundPermissionsAsync(),
+        5000,
+        "location permission",
+      );
       if (status === "granted") {
-        const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
+        const loc = await withTimeout(
+          Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          }),
+          10000,
+          "GPS position",
+        );
         const newLat = loc.coords.latitude;
         const newLon = loc.coords.longitude;
 
@@ -205,10 +242,14 @@ export async function getWeather(): Promise<WeatherData | null> {
 
           // reverse geocode → 시도명 + 시군구명 + 읍면동명
           try {
-            const geocode = await Location.reverseGeocodeAsync({
-              latitude: lat,
-              longitude: lon,
-            });
+            const geocode = await withTimeout(
+              Location.reverseGeocodeAsync({
+                latitude: lat,
+                longitude: lon,
+              }),
+              5000,
+              "reverse geocode",
+            );
             if (geocode.length > 0) {
               const g = geocode[0];
               const region = g.region || g.subregion || "";
@@ -232,10 +273,23 @@ export async function getWeather(): Promise<WeatherData | null> {
           locationLoaded = true;
         }
       }
-    } catch {}
+    } catch (locErr) {
+      console.warn("Location error (using fallback):", locErr);
+      // GPS 실패 시 캐시된 위치가 있으면 사용
+      if (locationLoaded && lastLat !== 0) {
+        lat = lastLat;
+        lon = lastLon;
+        sido = lastSido;
+        city = lastCity;
+        dong = lastDong;
+      }
+    }
 
     const url = `${API_URL}/api/weather?lat=${lat}&lon=${lon}&sido=${encodeURIComponent(sido)}&city=${encodeURIComponent(city)}&dong=${encodeURIComponent(dong)}`;
-    const res = await fetch(url);
+    const controller = new AbortController();
+    const fetchTimer = setTimeout(() => controller.abort(), 15000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(fetchTimer);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json();

@@ -66,6 +66,7 @@ export const ALARM_DURATION_OPTIONS: { label: string; value: number }[] = [
   { label: "3분", value: 3 },
   { label: "5분", value: 5 },
   { label: "10분", value: 10 },
+  { label: "끌 때까지", value: 0 },
 ];
 
 interface SettingsState {

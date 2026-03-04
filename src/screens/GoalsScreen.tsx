@@ -17,10 +17,10 @@ import { Plus, Target, X, Pin, Trash2, Copy } from "lucide-react-native";
 import * as Clipboard from "expo-clipboard";
 import * as SecureStore from "expo-secure-store";
 import { useTheme } from "../lib/theme";
+import GoalBanner from "../components/GoalBanner";
 import { api } from "../lib/api";
 import { Goal, GoalType } from "../types";
 import { useGoalStore } from "../store/goals";
-import GoalBanner from "../components/GoalBanner";
 import VoiceInput from "../components/VoiceInput";
 import DraggableFlatList, {
   ScaleDecorator,

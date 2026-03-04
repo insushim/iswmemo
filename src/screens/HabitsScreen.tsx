@@ -26,9 +26,9 @@ import * as Clipboard from "expo-clipboard";
 import { format } from "date-fns";
 import * as SecureStore from "expo-secure-store";
 import { useTheme } from "../lib/theme";
+import GoalBanner from "../components/GoalBanner";
 import { api } from "../lib/api";
 import { Habit, Routine, RoutineItem } from "../types";
-import GoalBanner from "../components/GoalBanner";
 import VoiceInput from "../components/VoiceInput";
 import { Swipeable } from "react-native-gesture-handler";
 import DraggableFlatList, {

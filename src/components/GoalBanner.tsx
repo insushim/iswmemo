@@ -3,24 +3,22 @@ import { View, Text, StyleSheet } from "react-native";
 import { Target } from "lucide-react-native";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import * as Battery from "expo-battery";
 import { useTheme } from "../lib/theme";
 import { useGoalStore } from "../store/goals";
+import { useBannerStore } from "../store/banner";
 import {
-  getWeather,
   getDustLevel,
   getDustLevel10,
   getDustColor,
   getDustColor10,
-  WeatherData,
 } from "../lib/weather";
 
 export default function GoalBanner() {
   const { colors } = useTheme();
   const { pinnedGoals } = useGoalStore();
+  const weather = useBannerStore((s) => s.weather);
+  const battery = useBannerStore((s) => s.battery);
   const [now, setNow] = useState(new Date());
-  const [weather, setWeather] = useState<WeatherData | null>(null);
-  const [battery, setBattery] = useState<number | null>(null);
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -34,36 +32,6 @@ export default function GoalBanner() {
     return () => {
       clearTimeout(timeout);
       if (intervalId) clearInterval(intervalId);
-    };
-  }, []);
-
-  useEffect(() => {
-    // 즉시 로드 (영구 캐시가 있으면 딜레이 없이 표시)
-    getWeather().then(setWeather);
-    // 10분마다 갱신 (서버 캐시와 동기화)
-    const interval = setInterval(
-      () => getWeather().then(setWeather),
-      10 * 60 * 1000,
-    );
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const poll = () =>
-      Battery.getBatteryLevelAsync()
-        .then((level) => {
-          if (level >= 0) setBattery(Math.round(level * 100));
-        })
-        .catch(() => {});
-    poll();
-    // 30초마다 폴링 (로컬 네이티브 호출, 비용 없음)
-    const interval = setInterval(poll, 30000);
-    const sub = Battery.addBatteryLevelListener(({ batteryLevel }) => {
-      if (batteryLevel >= 0) setBattery(Math.round(batteryLevel * 100));
-    });
-    return () => {
-      clearInterval(interval);
-      sub.remove();
     };
   }, []);
 
@@ -282,6 +250,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.3)",
   },
   batteryFill: {
     position: "absolute",

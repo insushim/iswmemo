@@ -32,6 +32,7 @@ import {
   FileText,
 } from "lucide-react-native";
 import { useTheme, levelSystem } from "../lib/theme";
+import GoalBanner from "../components/GoalBanner";
 import { useAuthStore } from "../store/auth";
 import {
   useSettingsStore,
@@ -45,7 +46,6 @@ import {
   THEME_COLOR_OPTIONS,
   ALARM_DURATION_OPTIONS,
 } from "../store/settings";
-import GoalBanner from "../components/GoalBanner";
 import { APP_VERSION } from "../lib/config";
 
 const { AutoLaunchModule } = NativeModules;
@@ -412,7 +412,11 @@ export default function SettingsScreen() {
             icon={Bell}
             iconColor="#ec4899"
             title="알람 소리 지속 시간"
-            subtitle={`${alarmDuration}분 후 자동 종료`}
+            subtitle={
+              alarmDuration === 0
+                ? "끌 때까지 울림"
+                : `${alarmDuration}분 후 자동 종료`
+            }
             onPress={() => setShowAlarmDuration(true)}
           />
         </View>

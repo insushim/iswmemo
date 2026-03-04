@@ -49,11 +49,11 @@ import {
 import { ko } from "date-fns/locale";
 import * as SecureStore from "expo-secure-store";
 import { useTheme } from "../lib/theme";
+import GoalBanner from "../components/GoalBanner";
 import { api } from "../lib/api";
 import { Routine, Task } from "../types";
 import { useSettingsStore } from "../store/settings";
 import { scheduleTaskAlarm, cancelTaskAlarm } from "../lib/taskAlarm";
-import GoalBanner from "../components/GoalBanner";
 import VoiceInput from "../components/VoiceInput";
 import { Swipeable } from "react-native-gesture-handler";
 import DraggableFlatList, {
