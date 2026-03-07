@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, AppState } from "react-native";
 import { Target } from "lucide-react-native";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -21,17 +21,15 @@ export default function GoalBanner() {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-    // 다음 분 경계까지 대기 후 매 분 정각에 갱신 (밀리초 단위 정확도)
-    const now = new Date();
-    const msToNextMin = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
-    const timeout = setTimeout(() => {
-      setNow(new Date());
-      intervalId = setInterval(() => setNow(new Date()), 60000);
-    }, msToNextMin);
+    // 매 초 갱신 (분이 바뀌는 순간을 놓치지 않도록)
+    const intervalId = setInterval(() => setNow(new Date()), 1000);
+    // foreground 복귀 시 즉시 갱신
+    const appStateSub = AppState.addEventListener("change", (state) => {
+      if (state === "active") setNow(new Date());
+    });
     return () => {
-      clearTimeout(timeout);
-      if (intervalId) clearInterval(intervalId);
+      clearInterval(intervalId);
+      appStateSub.remove();
     };
   }, []);
 

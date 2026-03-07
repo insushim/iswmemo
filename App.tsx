@@ -15,6 +15,7 @@ import Navigation from "./src/navigation";
 import { useAuthStore } from "./src/store/auth";
 import { useGoalStore } from "./src/store/goals";
 import { useSettingsStore } from "./src/store/settings";
+import { useTheme } from "./src/lib/theme";
 import {
   requestNotificationPermission,
   syncAuthTokenToNative,
@@ -49,6 +50,7 @@ export default function App() {
   const { checkAuth, isAuthenticated } = useAuthStore();
   const { loadPinnedGoals } = useGoalStore();
   const { loadSettings, darkMode, autoLaunchEnabled } = useSettingsStore();
+  const { colors } = useTheme();
 
   useEffect(() => {
     const init = async () => {
@@ -65,7 +67,10 @@ export default function App() {
       } catch (error) {
         console.error("Init failed:", error);
       } finally {
-        await SplashScreen.hideAsync();
+        // 렌더링 완료 후 splash 숨김 (깜빡거림 방지)
+        requestAnimationFrame(() => {
+          SplashScreen.hideAsync();
+        });
       }
     };
     init();
@@ -196,7 +201,9 @@ export default function App() {
   }, [isAuthenticated]);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
       <SafeAreaProvider>
         {/* Android: 상태바 완전 숨김 - GoalBanner가 그 자리 차지 */}
         <StatusBar
