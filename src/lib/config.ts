@@ -1,2 +1,2 @@
 export const API_URL = "https://growthpad.simssijjang.workers.dev";
-export const APP_VERSION = "3.5.1";
+export const APP_VERSION = "3.6.1";
