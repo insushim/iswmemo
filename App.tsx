@@ -67,9 +67,11 @@ export default function App() {
       } catch (error) {
         console.error("Init failed:", error);
       } finally {
-        // 렌더링 완료 후 splash 숨김 (깜빡거림 방지)
+        // 렌더링 완료 후 splash 숨김 (2프레임 대기로 Navigation 렌더링 보장)
         requestAnimationFrame(() => {
-          SplashScreen.hideAsync();
+          requestAnimationFrame(() => {
+            SplashScreen.hideAsync();
+          });
         });
       }
     };

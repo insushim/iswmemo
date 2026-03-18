@@ -15,6 +15,7 @@ export interface WeatherData {
   afternoonIcon: string;
   alerts: string[];
   windSpeed: number;
+  locationName: string; // 현재 위치명 (읍면동)
 }
 
 // PM2.5 기준 초미세먼지 등급 (이모지)
@@ -54,18 +55,28 @@ const WEATHER_CACHE_KEY = "cached_weather_v1";
 const LOCATION_CACHE_KEY = "cached_location_v1";
 let cachedWeather: WeatherData | null = null;
 let cacheTimestamp = 0;
-const CACHE_DURATION = 10 * 60 * 1000; // 10분
+const CACHE_DURATION = 5 * 60 * 1000; // 5분
 
 const DEFAULT_LAT = 37.5665;
 const DEFAULT_LON = 126.978;
 
-// === GPS 안정성: 마지막 확정 위치 캐시 ===
+// === GPS 위치 상태 ===
 let lastLat = 0;
 let lastLon = 0;
 let lastSido = "";
 let lastCity = "";
 let lastDong = "";
 let locationLoaded = false;
+
+// 실시간 GPS 추적 (watchPosition)
+let lastWatchLat = 0;
+let lastWatchLon = 0;
+let lastWatchSido = "";
+let lastWatchCity = "";
+let lastWatchDong = "";
+let watchHasLocation = false;
+let locationWatchSub: Location.LocationSubscription | null = null;
+let onSignificantMove: (() => void) | null = null;
 
 // 두 GPS 좌표 사이 거리 (m) - haversine
 function distanceM(
@@ -85,8 +96,94 @@ function distanceM(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// 500m 이내면 이전 위치 유지 (GPS 흔들림 방지)
-const LOCATION_THRESHOLD_M = 500;
+// 1km 이상 이동 시 날씨 자동 갱신 트리거
+const SIGNIFICANT_MOVE_M = 1000;
+// 날씨 API 요청 시 GPS 흔들림 필터 (forceRefresh가 아닐 때만)
+const JITTER_THRESHOLD_M = 300;
+
+// === 실시간 GPS 추적 ===
+export async function startLocationWatch(onMove: () => void): Promise<void> {
+  if (locationWatchSub) return; // 이미 추적 중
+  onSignificantMove = onMove;
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") return;
+
+    locationWatchSub = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.Balanced,
+        distanceInterval: 200, // 200m 이동마다 콜백
+        timeInterval: 30000, // 최소 30초 간격
+      },
+      async (loc) => {
+        const newLat = loc.coords.latitude;
+        const newLon = loc.coords.longitude;
+
+        // 역지오코딩으로 위치명 업데이트
+        try {
+          const geocode = await Location.reverseGeocodeAsync({
+            latitude: newLat,
+            longitude: newLon,
+          });
+          if (geocode.length > 0) {
+            const g = geocode[0];
+            const region = g.region || g.subregion || "";
+            lastWatchSido = getSidoName(region);
+            lastWatchCity = g.subregion || "";
+            lastWatchDong =
+              g.district ||
+              (g.city && g.city !== g.subregion ? g.city : "") ||
+              (g.name && /[동읍면리가]$/.test(g.name) ? g.name : "") ||
+              (g.street && /[동읍면리가]$/.test(g.street) ? g.street : "") ||
+              "";
+          }
+        } catch {}
+
+        // 이전 위치 대비 이동 거리 체크
+        const moved = watchHasLocation
+          ? distanceM(lastWatchLat, lastWatchLon, newLat, newLon)
+          : Infinity;
+
+        lastWatchLat = newLat;
+        lastWatchLon = newLon;
+        watchHasLocation = true;
+
+        // 1km 이상 이동 시 날씨 갱신 트리거
+        if (moved >= SIGNIFICANT_MOVE_M && onSignificantMove) {
+          onSignificantMove();
+        }
+      },
+    );
+  } catch (e) {
+    console.warn("Location watch failed:", e);
+  }
+}
+
+export function stopLocationWatch(): void {
+  if (locationWatchSub) {
+    locationWatchSub.remove();
+    locationWatchSub = null;
+  }
+  onSignificantMove = null;
+}
+
+// watchPosition에서 추적 중인 최신 위치 반환
+export function getWatchedLocation(): {
+  lat: number;
+  lon: number;
+  sido: string;
+  city: string;
+  dong: string;
+} | null {
+  if (!watchHasLocation) return null;
+  return {
+    lat: lastWatchLat,
+    lon: lastWatchLon,
+    sido: lastWatchSido,
+    city: lastWatchCity,
+    dong: lastWatchDong,
+  };
+}
 
 // GPS → 시도명 매핑 (reverse geocoding)
 function getSidoName(region: string): string {
@@ -209,74 +306,116 @@ export async function getWeather(
     let dong = "";
 
     try {
+      // 1순위: watchPosition에서 추적 중인 실시간 위치 사용
+      const watched = getWatchedLocation();
+      if (watched) {
+        lat = watched.lat;
+        lon = watched.lon;
+        sido = watched.sido || "서울";
+        city = watched.city;
+        dong = watched.dong;
+      }
+
       const { status } = await withTimeout(
         Location.requestForegroundPermissionsAsync(),
         5000,
         "location permission",
       );
       if (status === "granted") {
-        const loc = await withTimeout(
-          Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          }),
-          10000,
-          "GPS position",
-        );
-        const newLat = loc.coords.latitude;
-        const newLon = loc.coords.longitude;
+        // 2순위: getLastKnownPosition (즉시, 네트워크 불필요)
+        let newLat = 0,
+          newLon = 0;
+        try {
+          const lastKnown = await Location.getLastKnownPositionAsync();
+          if (lastKnown) {
+            newLat = lastKnown.coords.latitude;
+            newLon = lastKnown.coords.longitude;
+          }
+        } catch {}
 
-        // GPS 안정성: 이전 위치와 500m 이내면 이전 위치 유지
-        if (
-          locationLoaded &&
-          lastLat !== 0 &&
-          distanceM(lastLat, lastLon, newLat, newLon) < LOCATION_THRESHOLD_M
-        ) {
-          lat = lastLat;
-          lon = lastLon;
-          sido = lastSido;
-          city = lastCity;
-          dong = lastDong;
-        } else {
-          lat = newLat;
-          lon = newLon;
+        // 3순위: getCurrentPosition (정확하지만 느릴 수 있음)
+        try {
+          const loc = await withTimeout(
+            Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            }),
+            10000,
+            "GPS position",
+          );
+          newLat = loc.coords.latitude;
+          newLon = loc.coords.longitude;
+        } catch (gpsErr) {
+          // getCurrentPosition 실패해도 lastKnown이 있으면 OK
+          if (newLat === 0) throw gpsErr;
+        }
 
-          // reverse geocode → 시도명 + 시군구명 + 읍면동명
-          try {
-            const geocode = await withTimeout(
-              Location.reverseGeocodeAsync({
-                latitude: lat,
-                longitude: lon,
-              }),
-              5000,
-              "reverse geocode",
-            );
-            if (geocode.length > 0) {
-              const g = geocode[0];
-              const region = g.region || g.subregion || "";
-              sido = getSidoName(region);
-              city = g.subregion || "";
-              dong =
-                g.district ||
-                (g.city && g.city !== g.subregion ? g.city : "") ||
-                (g.name && /[동읍면리가]$/.test(g.name) ? g.name : "") ||
-                (g.street && /[동읍면리가]$/.test(g.street) ? g.street : "") ||
-                "";
-            }
-          } catch {}
+        if (newLat !== 0) {
+          // forceRefresh: 항상 최신 GPS 사용 (흔들림 필터 무시)
+          // 일반: 300m 이내면 이전 위치 유지 (날씨 격자 동일)
+          const shouldUpdate =
+            forceRefresh ||
+            !locationLoaded ||
+            lastLat === 0 ||
+            distanceM(lastLat, lastLon, newLat, newLon) >= JITTER_THRESHOLD_M;
 
-          // 위치 캐시 업데이트
-          lastLat = lat;
-          lastLon = lon;
-          lastSido = sido;
-          lastCity = city;
-          lastDong = dong;
-          locationLoaded = true;
+          if (shouldUpdate) {
+            lat = newLat;
+            lon = newLon;
+
+            // reverse geocode → 시도명 + 시군구명 + 읍면동명
+            try {
+              const geocode = await withTimeout(
+                Location.reverseGeocodeAsync({
+                  latitude: lat,
+                  longitude: lon,
+                }),
+                5000,
+                "reverse geocode",
+              );
+              if (geocode.length > 0) {
+                const g = geocode[0];
+                const region = g.region || g.subregion || "";
+                sido = getSidoName(region);
+                city = g.subregion || "";
+                dong =
+                  g.district ||
+                  (g.city && g.city !== g.subregion ? g.city : "") ||
+                  (g.name && /[동읍면리가]$/.test(g.name) ? g.name : "") ||
+                  (g.street && /[동읍면리가]$/.test(g.street)
+                    ? g.street
+                    : "") ||
+                  "";
+              }
+            } catch {}
+
+            // 위치 캐시 업데이트
+            lastLat = lat;
+            lastLon = lon;
+            lastSido = sido;
+            lastCity = city;
+            lastDong = dong;
+            locationLoaded = true;
+          } else {
+            // 흔들림 범위 내: 이전 위치 재사용
+            lat = lastLat;
+            lon = lastLon;
+            sido = lastSido;
+            city = lastCity;
+            dong = lastDong;
+          }
         }
       }
     } catch (locErr) {
       console.warn("Location error (using fallback):", locErr);
-      // GPS 실패 시 캐시된 위치가 있으면 사용
-      if (locationLoaded && lastLat !== 0) {
+      // GPS 실패 시: watchPosition 위치 > 캐시 위치 > 서울 기본값
+      const watched = getWatchedLocation();
+      if (watched && watched.lat !== 0) {
+        lat = watched.lat;
+        lon = watched.lon;
+        sido = watched.sido || "서울";
+        city = watched.city;
+        dong = watched.dong;
+      } else if (locationLoaded && lastLat !== 0) {
         lat = lastLat;
         lon = lastLon;
         sido = lastSido;
@@ -307,6 +446,7 @@ export async function getWeather(
       afternoonIcon: data.afternoonIcon ?? "☀️",
       alerts: data.alerts ?? [],
       windSpeed: data.windSpeed ?? 0,
+      locationName: dong || city || sido,
     };
     cacheTimestamp = Date.now();
     persistCache();
