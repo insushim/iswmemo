@@ -10,7 +10,7 @@ import {
   StickyNote,
   Settings,
 } from "lucide-react-native";
-import { Platform } from "react-native";
+import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../lib/theme";
 import { useAuthStore } from "../store/auth";
@@ -126,7 +126,7 @@ export default function Navigation() {
   const { isAuthenticated, isLoading } = useAuthStore();
 
   if (isLoading) {
-    return null;
+    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 
   return (

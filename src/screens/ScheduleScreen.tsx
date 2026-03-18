@@ -827,6 +827,12 @@ export default function ScheduleScreen() {
               ...data,
               ...prev.filter((s) => !ids.has(s.id)),
             ]);
+            api
+              .reorder(
+                "routine",
+                data.map((r, i) => ({ id: r.id, order: i })),
+              )
+              .catch(() => {});
           }}
           refreshing={refreshing}
           onRefresh={onRefresh}

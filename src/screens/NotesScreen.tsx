@@ -316,7 +316,15 @@ export default function NotesScreen() {
           keyExtractor={(item) => item.id}
           refreshing={refreshing}
           onRefresh={onRefresh}
-          onDragEnd={({ data }: { data: Note[] }) => setNotes(data)}
+          onDragEnd={({ data }: { data: Note[] }) => {
+            setNotes(data);
+            api
+              .reorder(
+                "note",
+                data.map((n, i) => ({ id: n.id, order: i })),
+              )
+              .catch(() => {});
+          }}
           contentContainerStyle={{ paddingHorizontal: 20 }}
           ListHeaderComponent={null}
           ListEmptyComponent={

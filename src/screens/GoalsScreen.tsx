@@ -326,7 +326,15 @@ export default function GoalsScreen() {
         <DraggableFlatList
           data={filteredGoals}
           keyExtractor={(item) => item.id}
-          onDragEnd={({ data }: { data: Goal[] }) => setGoals(data)}
+          onDragEnd={({ data }: { data: Goal[] }) => {
+            setGoals(data);
+            api
+              .reorder(
+                "goal",
+                data.map((g, i) => ({ id: g.id, order: i })),
+              )
+              .catch(() => {});
+          }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }

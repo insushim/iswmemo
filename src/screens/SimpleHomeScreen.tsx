@@ -681,7 +681,15 @@ export default function SimpleHomeScreen() {
           data={tasks}
           keyExtractor={(item) => item.id}
           renderItem={renderTaskItem}
-          onDragEnd={({ data }: { data: Task[] }) => setTasks(data)}
+          onDragEnd={({ data }: { data: Task[] }) => {
+            setTasks(data);
+            api
+              .reorder(
+                "task",
+                data.map((t, i) => ({ id: t.id, order: i })),
+              )
+              .catch(() => {});
+          }}
           refreshing={refreshing}
           onRefresh={onRefresh}
           contentContainerStyle={styles.listContent}

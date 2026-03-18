@@ -540,16 +540,26 @@ export default function HabitsScreen() {
           refreshing={refreshing}
           onRefresh={onRefresh}
           onDragEnd={({ data }: { data: ListEntry[] }) => {
-            setHabits(
-              data
-                .filter((i) => i._listType === "habit")
-                .map(({ _listType, ...rest }) => rest as Habit),
-            );
-            setRoutines(
-              data
-                .filter((i) => i._listType === "routine")
-                .map(({ _listType, ...rest }) => rest as Routine),
-            );
+            const newHabits = data
+              .filter((i) => i._listType === "habit")
+              .map(({ _listType, ...rest }) => rest as Habit);
+            const newRoutines = data
+              .filter((i) => i._listType === "routine")
+              .map(({ _listType, ...rest }) => rest as Routine);
+            setHabits(newHabits);
+            setRoutines(newRoutines);
+            api
+              .reorder(
+                "habit",
+                newHabits.map((h, i) => ({ id: h.id, order: i })),
+              )
+              .catch(() => {});
+            api
+              .reorder(
+                "routine",
+                newRoutines.map((r, i) => ({ id: r.id, order: i })),
+              )
+              .catch(() => {});
           }}
           contentContainerStyle={styles.list}
           ListEmptyComponent={

@@ -277,7 +277,15 @@ export default function RoutinesScreen() {
       <DraggableFlatList
         data={routines}
         keyExtractor={(item) => item.id}
-        onDragEnd={({ data }: { data: Routine[] }) => setRoutines(data)}
+        onDragEnd={({ data }: { data: Routine[] }) => {
+          setRoutines(data);
+          api
+            .reorder(
+              "routine",
+              data.map((r, i) => ({ id: r.id, order: i })),
+            )
+            .catch(() => {});
+        }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
