@@ -115,7 +115,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   checkAuth: async () => {
     try {
-      set({ isLoading: true });
+      // isLoading은 초기값이 true이므로 중복 set 불필요 (re-render 방지)
 
       // 저장된 JWT 토큰 확인
       const token = await SecureStore.getItemAsync(TOKEN_KEY);
@@ -141,7 +141,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 await AlarmModule.saveAuthToken(token);
               } catch {}
             }
-            set({ user: data.user, isAuthenticated: true });
+            // isAuthenticated + isLoading을 한번에 set (re-render 1회로 줄임)
+            set({ user: data.user, isAuthenticated: true, isLoading: false });
             return;
           }
         }
@@ -150,12 +151,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await SecureStore.deleteItemAsync(TOKEN_KEY);
       }
 
-      set({ user: null, isAuthenticated: false });
+      set({ user: null, isAuthenticated: false, isLoading: false });
     } catch (error) {
       if (__DEV__) console.error("Auth check error:", error);
-      set({ user: null, isAuthenticated: false });
-    } finally {
-      set({ isLoading: false });
+      set({ user: null, isAuthenticated: false, isLoading: false });
     }
   },
 }));

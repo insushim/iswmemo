@@ -33,9 +33,8 @@ function MainTabs() {
   const insets = useSafeAreaInsets();
 
   // 날씨/배터리 데이터 글로벌 초기화 (1회만 실행)
-  const init = useBannerStore((s) => s.init);
   React.useEffect(() => {
-    init();
+    useBannerStore.getState().init();
   }, []);
 
   const bottomPadding =
@@ -121,31 +120,35 @@ function MainTabs() {
   );
 }
 
+const MemoizedMainTabs = React.memo(MainTabs);
+
 export default function Navigation() {
   const { colors } = useTheme();
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isLoading = useAuthStore((s) => s.isLoading);
 
-  if (isLoading) {
-    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
-  }
-
+  // NavigationContainer를 항상 마운트 상태로 유지 (언마운트/리마운트 = 탭바 깜빡임)
   return (
     <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.background },
-        }}
-      >
-        {!isAuthenticated ? (
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-          </>
-        ) : (
-          <Stack.Screen name="Main" component={MainTabs} />
-        )}
-      </Stack.Navigator>
+      {isLoading ? (
+        <View style={{ flex: 1, backgroundColor: colors.background }} />
+      ) : (
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+          }}
+        >
+          {!isAuthenticated ? (
+            <>
+              <Stack.Screen name="Login" component={LoginScreen} />
+              <Stack.Screen name="Register" component={RegisterScreen} />
+            </>
+          ) : (
+            <Stack.Screen name="Main" component={MemoizedMainTabs} />
+          )}
+        </Stack.Navigator>
+      )}
     </NavigationContainer>
   );
 }
