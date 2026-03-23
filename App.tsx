@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -51,6 +51,7 @@ export default function App() {
   const { loadPinnedGoals } = useGoalStore();
   const { loadSettings, darkMode, autoLaunchEnabled } = useSettingsStore();
   const { colors } = useTheme();
+  const appReady = useRef(false);
 
   useEffect(() => {
     const init = async () => {
@@ -62,8 +63,6 @@ export default function App() {
         // 기존 expo 잔여 알림 모두 정리 (네이티브 알람은 영향 없음)
         await Notifications.cancelAllScheduledNotificationsAsync();
         await Notifications.dismissAllNotificationsAsync();
-        // 업데이트 확인 (백그라운드)
-        checkForUpdate();
       } catch (error) {
         console.error("Init failed:", error);
       } finally {
@@ -71,6 +70,9 @@ export default function App() {
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             SplashScreen.hideAsync();
+            appReady.current = true;
+            // 업데이트 확인 (앱 안정화 후 10초 뒤)
+            setTimeout(checkForUpdate, 10000);
           });
         });
       }
@@ -194,11 +196,18 @@ export default function App() {
       }
     };
 
-    // InteractionManager로 렌더링 완료 후 권한 요청 (렉 방지)
-    const handle = InteractionManager.runAfterInteractions(() => {
-      const timer = setTimeout(requestAllPermissions, 800);
-      return () => clearTimeout(timer);
-    });
+    // 앱 초기화 완료 후 권한 요청 (splash 숨김 + 네비게이션 안정화 대기)
+    const waitAndRequest = () => {
+      const check = () => {
+        if (appReady.current) {
+          setTimeout(requestAllPermissions, 1500);
+        } else {
+          setTimeout(check, 500);
+        }
+      };
+      check();
+    };
+    const handle = InteractionManager.runAfterInteractions(waitAndRequest);
     return () => handle.cancel();
   }, [isAuthenticated]);
 
