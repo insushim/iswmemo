@@ -10,7 +10,7 @@ import {
   StickyNote,
   Settings,
 } from "lucide-react-native";
-import { Platform, View } from "react-native";
+import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../lib/theme";
 import { useAuthStore } from "../store/auth";
@@ -122,33 +122,29 @@ function MainTabs() {
 
 const MemoizedMainTabs = React.memo(MainTabs);
 
+// SplashScreen이 로딩 중 화면을 덮으므로 isLoading 가드 불필요
+// NavigationContainer + Stack.Navigator를 항상 마운트 (언마운트 = 깜빡임+크래시)
 export default function Navigation() {
   const { colors } = useTheme();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const isLoading = useAuthStore((s) => s.isLoading);
 
-  // NavigationContainer를 항상 마운트 상태로 유지 (언마운트/리마운트 = 탭바 깜빡임)
   return (
     <NavigationContainer>
-      {isLoading ? (
-        <View style={{ flex: 1, backgroundColor: colors.background }} />
-      ) : (
-        <Stack.Navigator
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.background },
-          }}
-        >
-          {!isAuthenticated ? (
-            <>
-              <Stack.Screen name="Login" component={LoginScreen} />
-              <Stack.Screen name="Register" component={RegisterScreen} />
-            </>
-          ) : (
-            <Stack.Screen name="Main" component={MemoizedMainTabs} />
-          )}
-        </Stack.Navigator>
-      )}
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      >
+        {!isAuthenticated ? (
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Register" component={RegisterScreen} />
+          </>
+        ) : (
+          <Stack.Screen name="Main" component={MemoizedMainTabs} />
+        )}
+      </Stack.Navigator>
     </NavigationContainer>
   );
 }
