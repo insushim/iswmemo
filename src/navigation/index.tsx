@@ -122,11 +122,13 @@ function MainTabs() {
 
 const MemoizedMainTabs = React.memo(MainTabs);
 
-// SplashScreen이 로딩 중 화면을 덮으므로 isLoading 가드 불필요
-// NavigationContainer + Stack.Navigator를 항상 마운트 (언마운트 = 깜빡임+크래시)
+// SplashScreen이 덮고 있는 동안 보이는 빈 화면 (Stack.Screen용)
+const LoadingScreen = () => null;
+
 export default function Navigation() {
   const { colors } = useTheme();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isLoading = useAuthStore((s) => s.isLoading);
 
   return (
     <NavigationContainer>
@@ -134,9 +136,13 @@ export default function Navigation() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.background },
+          // 스크린 교체 시 네이티브 전환 애니메이션 비활성화 (깜빡임 방지)
+          animation: "none",
         }}
       >
-        {!isAuthenticated ? (
+        {isLoading ? (
+          <Stack.Screen name="Loading" component={LoadingScreen} />
+        ) : !isAuthenticated ? (
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
