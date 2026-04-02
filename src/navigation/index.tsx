@@ -16,6 +16,7 @@ import { useTheme } from "../lib/theme";
 import { useAuthStore } from "../store/auth";
 import { useBannerStore } from "../store/banner";
 
+import * as SecureStore from "expo-secure-store";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import SimpleHomeScreen from "../screens/SimpleHomeScreen";
@@ -129,6 +130,16 @@ export default function Navigation() {
   const { colors } = useTheme();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
+  // 토큰이 있으면 로딩 중에도 MainTabs를 보여줘서 깜빡임 방지
+  const [hasToken, setHasToken] = React.useState(false);
+  React.useEffect(() => {
+    SecureStore.getItemAsync("auth_token").then((t) => {
+      if (t) setHasToken(true);
+    });
+  }, []);
+
+  // 토큰이 있으면 로딩 중에도 Main 화면 유지 (null 화면 깜빡임 방지)
+  const showMain = isAuthenticated || (isLoading && hasToken);
 
   return (
     <NavigationContainer>
@@ -140,15 +151,15 @@ export default function Navigation() {
           animation: "none",
         }}
       >
-        {isLoading ? (
+        {showMain ? (
+          <Stack.Screen name="Main" component={MemoizedMainTabs} />
+        ) : isLoading ? (
           <Stack.Screen name="Loading" component={LoadingScreen} />
-        ) : !isAuthenticated ? (
+        ) : (
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
           </>
-        ) : (
-          <Stack.Screen name="Main" component={MemoizedMainTabs} />
         )}
       </Stack.Navigator>
     </NavigationContainer>
