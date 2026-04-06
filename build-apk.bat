@@ -6,7 +6,7 @@ call gradlew.bat assembleRelease
 if %ERRORLEVEL% EQU 0 (
     echo BUILD SUCCESS
     if exist "app\build\outputs\apk\release\app-release.apk" (
-        copy /Y "app\build\outputs\apk\release\app-release.apk" "%~dp0GrowthPad-v1.4.0-release.apk"
+        copy /Y "app\build\outputs\apk\release\app-release.apk" "%~dp0DdobakDdobak-v3.9.0-release.apk"
         echo APK copied!
     )
 ) else (

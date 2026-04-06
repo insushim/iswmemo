@@ -52,6 +52,7 @@ export default function App() {
   const { loadSettings, darkMode, autoLaunchEnabled } = useSettingsStore();
   const { colors } = useTheme();
   const appReady = useRef(false);
+  const [appInitialized, setAppInitialized] = React.useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -66,6 +67,8 @@ export default function App() {
       } catch (error) {
         console.error("Init failed:", error);
       } finally {
+        // 초기화 완료 → Navigation 마운트 허용
+        setAppInitialized(true);
         // 렌더링 완료 후 splash 숨김 (2프레임 대기로 Navigation 렌더링 보장)
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
@@ -221,7 +224,7 @@ export default function App() {
           hidden={Platform.OS === "android"}
           style={darkMode ? "light" : "dark"}
         />
-        <Navigation />
+        {appInitialized ? <Navigation /> : null}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

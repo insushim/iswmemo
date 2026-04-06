@@ -16,7 +16,6 @@ import { useTheme } from "../lib/theme";
 import { useAuthStore } from "../store/auth";
 import { useBannerStore } from "../store/banner";
 
-import * as SecureStore from "expo-secure-store";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import SimpleHomeScreen from "../screens/SimpleHomeScreen";
@@ -123,38 +122,23 @@ function MainTabs() {
 
 const MemoizedMainTabs = React.memo(MainTabs);
 
-// SplashScreen이 덮고 있는 동안 보이는 빈 화면 (Stack.Screen용)
-const LoadingScreen = () => null;
-
 export default function Navigation() {
   const { colors } = useTheme();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const isLoading = useAuthStore((s) => s.isLoading);
-  // 토큰이 있으면 로딩 중에도 MainTabs를 보여줘서 깜빡임 방지
-  const [hasToken, setHasToken] = React.useState(false);
-  React.useEffect(() => {
-    SecureStore.getItemAsync("auth_token").then((t) => {
-      if (t) setHasToken(true);
-    });
-  }, []);
 
-  // 토큰이 있으면 로딩 중에도 Main 화면 유지 (null 화면 깜빡임 방지)
-  const showMain = isAuthenticated || (isLoading && hasToken);
-
+  // App.tsx에서 초기화 완료 후 마운트되므로 isLoading/hasToken 체크 불필요
+  // isAuthenticated만으로 즉시 올바른 화면 결정 (레이스 컨디션 없음)
   return (
     <NavigationContainer>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.background },
-          // 스크린 교체 시 네이티브 전환 애니메이션 비활성화 (깜빡임 방지)
           animation: "none",
         }}
       >
-        {showMain ? (
+        {isAuthenticated ? (
           <Stack.Screen name="Main" component={MemoizedMainTabs} />
-        ) : isLoading ? (
-          <Stack.Screen name="Loading" component={LoadingScreen} />
         ) : (
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
