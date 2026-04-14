@@ -57,23 +57,28 @@ export default function App() {
   useEffect(() => {
     const init = async () => {
       try {
-        await loadSettings();
-        await checkAuth();
-        await syncAuthTokenToNative(); // 알람 삭제용 토큰 동기화
-        await loadPinnedGoals();
-        // 기존 expo 잔여 알림 모두 정리 (네이티브 알람은 영향 없음)
-        await Notifications.cancelAllScheduledNotificationsAsync();
-        await Notifications.dismissAllNotificationsAsync();
+        // 필수 초기화만 병렬 로드 (콜드 스타트 시간 단축)
+        await Promise.all([
+          loadSettings(),
+          checkAuth(),
+          loadPinnedGoals(),
+        ]);
       } catch (error) {
         console.error("Init failed:", error);
       } finally {
-        // 초기화 완료 → Navigation 마운트 허용
+        // 초기화 완료 → Navigation 즉시 마운트
         setAppInitialized(true);
         // 렌더링 완료 후 splash 숨김 (2프레임 대기로 Navigation 렌더링 보장)
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             SplashScreen.hideAsync();
             appReady.current = true;
+            // 비필수 작업은 splash 숨긴 후 백그라운드에서 처리
+            syncAuthTokenToNative().catch(() => {});
+            Notifications.cancelAllScheduledNotificationsAsync().catch(
+              () => {},
+            );
+            Notifications.dismissAllNotificationsAsync().catch(() => {});
             // 업데이트 확인 (앱 안정화 후 10초 뒤)
             setTimeout(checkForUpdate, 10000);
           });
@@ -214,10 +219,11 @@ export default function App() {
     return () => handle.cancel();
   }, [isAuthenticated]);
 
+  // 초기화 전에는 splash 배경과 동일한 색상으로 흰 화면 깜빡임 방지
+  const rootBg = appInitialized ? colors.background : "#6366f1";
+
   return (
-    <GestureHandlerRootView
-      style={{ flex: 1, backgroundColor: colors.background }}
-    >
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: rootBg }}>
       <SafeAreaProvider>
         {/* Android: 상태바 완전 숨김 - GoalBanner가 그 자리 차지 */}
         <StatusBar

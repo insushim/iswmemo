@@ -37,8 +37,16 @@ function MainTabs() {
     useBannerStore.getState().init();
   }, []);
 
-  const bottomPadding =
+  // 잠금화면 wake 시 insets.bottom이 일시적으로 0으로 떨어지면서
+  // 탭바 height가 줄었다가 다시 늘어나며 깜빡임 발생.
+  // 한번 측정된 최대값을 유지해서 stable height 보장.
+  const stablePaddingRef = React.useRef(0);
+  const rawPadding =
     Platform.OS === "android" ? Math.max(insets.bottom, 4) : 4;
+  if (rawPadding > stablePaddingRef.current) {
+    stablePaddingRef.current = rawPadding;
+  }
+  const bottomPadding = stablePaddingRef.current || rawPadding;
   const tabBarHeight = 56 + bottomPadding;
 
   return (

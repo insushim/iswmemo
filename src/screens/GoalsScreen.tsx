@@ -44,7 +44,8 @@ const GOALS_CACHE_KEY = "cached_goals_v1";
 
 export default function GoalsScreen() {
   const { colors, scaledFont, cardPadding, textAlign } = useTheme();
-  const { pinnedGoals, togglePinGoal, removePinGoal } = useGoalStore();
+  const { pinnedGoals, togglePinGoal, removePinGoal, updatePinnedGoal } =
+    useGoalStore();
   const [refreshing, setRefreshing] = useState(false);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -147,6 +148,16 @@ export default function GoalsScreen() {
             : g,
         ),
       );
+      // 고정된 목표라면 헤더(GoalBanner)가 즉시 반영되도록 store도 갱신
+      if (editId && pinnedGoals.some((g) => g.id === editId)) {
+        const updated = {
+          ...(editingGoal as Goal),
+          title,
+          type: newGoalType,
+          color: selectedColor,
+        };
+        updatePinnedGoal(updated);
+      }
     }
 
     try {
