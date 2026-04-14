@@ -22,7 +22,7 @@ public class ScreenUnlockService extends Service {
     private static final String FULLSCREEN_CHANNEL_ID = "fullscreen_tasks";
     private static final int NOTIFICATION_ID = 2001;
     private static final int FULLSCREEN_NOTIFICATION_ID = 3001;
-    private static final long LAUNCH_DEBOUNCE_MS = 2500; // 2.5초 디바운싱
+    private static final long LAUNCH_DEBOUNCE_MS = 2500;
     private BroadcastReceiver screenReceiver;
     private Handler handler = new Handler(Looper.getMainLooper());
     private long lastLaunchTime = 0;
@@ -115,7 +115,6 @@ public class ScreenUnlockService extends Service {
     }
 
     private boolean isPhoneCallActive(Context context) {
-        // 오디오 모드 확인 (권한 불필요)
         try {
             AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
             if (am != null) {
@@ -127,7 +126,6 @@ public class ScreenUnlockService extends Service {
                 }
             }
         } catch (Exception e) {}
-        // 전화 상태 확인
         try {
             TelephonyManager tm = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
             if (tm != null && tm.getCallState() != TelephonyManager.CALL_STATE_IDLE) {
@@ -138,11 +136,7 @@ public class ScreenUnlockService extends Service {
     }
 
     private void launchApp(Context context) {
-        // 전화 수신/통화 중이면 실행하지 않음
         if (isPhoneCallActive(context)) return;
-        // 알람이 울리는 중이면 MainActivity를 앞으로 띄우지 않음 (알람 화면이 가려짐 방지)
-        if (AlarmService.isAlarmActive) return;
-        // 디바운싱: 마지막 런치로부터 2.5초 이내면 무시 (깜빡임 방지)
         long now = System.currentTimeMillis();
         if (now - lastLaunchTime < LAUNCH_DEBOUNCE_MS) return;
         lastLaunchTime = now;
@@ -198,7 +192,7 @@ public class ScreenUnlockService extends Service {
     @Override public void onDestroy() {
         if (screenReceiver != null) { try { unregisterReceiver(screenReceiver); } catch (Exception e) {} }
         super.onDestroy();
-        // START_STICKY가 시스템 재시작을 처리함 — 수동 재시작 제거 (APK 업데이트 시 충돌 방지)
+        // START_STICKY가 시스템 재시작을 처리 - 수동 재시작 제거 (APK 업데이트 충돌 방지)
     }
     @Override public void onTaskRemoved(Intent rootIntent) {
         try {

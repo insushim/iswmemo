@@ -134,14 +134,18 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.media.AudioManager;
+import android.telephony.TelephonyManager;
 
 public class ScreenUnlockService extends Service {
     private static final String CHANNEL_ID = "auto_launch_channel";
     private static final String FULLSCREEN_CHANNEL_ID = "fullscreen_tasks";
     private static final int NOTIFICATION_ID = 2001;
     private static final int FULLSCREEN_NOTIFICATION_ID = 3001;
+    private static final long LAUNCH_DEBOUNCE_MS = 2500;
     private BroadcastReceiver screenReceiver;
     private Handler handler = new Handler(Looper.getMainLooper());
+    private long lastLaunchTime = 0;
 
     @Override
     public void onCreate() {
@@ -230,7 +234,32 @@ public class ScreenUnlockService extends Service {
         }
     }
 
+    private boolean isPhoneCallActive(Context context) {
+        try {
+            AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            if (am != null) {
+                int mode = am.getMode();
+                if (mode == AudioManager.MODE_RINGTONE ||
+                    mode == AudioManager.MODE_IN_CALL ||
+                    mode == AudioManager.MODE_IN_COMMUNICATION) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {}
+        try {
+            TelephonyManager tm = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
+            if (tm != null && tm.getCallState() != TelephonyManager.CALL_STATE_IDLE) {
+                return true;
+            }
+        } catch (Exception e) {}
+        return false;
+    }
+
     private void launchApp(Context context) {
+        if (isPhoneCallActive(context)) return;
+        long now = System.currentTimeMillis();
+        if (now - lastLaunchTime < LAUNCH_DEBOUNCE_MS) return;
+        lastLaunchTime = now;
         try {
             Intent launchIntent = new Intent(context, MainActivity.class);
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -283,11 +312,7 @@ public class ScreenUnlockService extends Service {
     @Override public void onDestroy() {
         if (screenReceiver != null) { try { unregisterReceiver(screenReceiver); } catch (Exception e) {} }
         super.onDestroy();
-        try {
-            Intent restartIntent = new Intent(this, ScreenUnlockService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(restartIntent);
-            else startService(restartIntent);
-        } catch (Exception e) {}
+        // START_STICKY가 시스템 재시작을 처리 - 수동 재시작 제거 (APK 업데이트 충돌 방지)
     }
     @Override public void onTaskRemoved(Intent rootIntent) {
         try {
