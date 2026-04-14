@@ -1,8 +1,37 @@
-const { withAndroidManifest, withDangerousMod } = require('@expo/config-plugins');
+const { withAndroidManifest, withDangerousMod, withAndroidStyles } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
 function withAutoLaunch(config) {
+  // 0. styles.xml에 시스템 네비게이션 바 색상 명시 (splash → AppTheme 전환 시 flicker 방지)
+  config = withAndroidStyles(config, (config) => {
+    const styles = config.modResults;
+    const ensureItem = (styleName, name, value, targetApi) => {
+      const style = styles.resources.style?.find(
+        (s) => s.$?.name === styleName,
+      );
+      if (!style) return;
+      if (!style.item) style.item = [];
+      const existing = style.item.find((i) => i.$?.name === name);
+      if (existing) {
+        existing._ = value;
+        if (targetApi && !existing.$['tools:targetApi']) {
+          existing.$['tools:targetApi'] = targetApi;
+        }
+      } else {
+        const itemAttr = { name };
+        if (targetApi) itemAttr['tools:targetApi'] = targetApi;
+        style.item.push({ $: itemAttr, _: value });
+      }
+    };
+    ['AppTheme', 'Theme.App.SplashScreen'].forEach((styleName) => {
+      ensureItem(styleName, 'android:navigationBarColor', '#6366f1');
+      ensureItem(styleName, 'android:windowLightNavigationBar', 'false', '27');
+      ensureItem(styleName, 'android:statusBarColor', '#6366f1');
+    });
+    return config;
+  });
+
   // 1. AndroidManifest.xml: receiver + service + permissions + AlarmActivity + AlarmDeleteReceiver
   config = withAndroidManifest(config, (config) => {
     const manifest = config.modResults;

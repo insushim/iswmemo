@@ -35,12 +35,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ isLoading: true });
 
-      // 새로운 모바일 전용 JWT 인증 API 사용
+      // 15초 타임아웃 — 네트워크 지연 시 무한 대기 방지
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       const response = await fetch(`${API_URL}/api/auth/mobile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const data = await response.json();
 
@@ -115,43 +119,53 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   checkAuth: async () => {
     try {
-      // isLoading은 초기값이 true이므로 중복 set 불필요 (re-render 방지)
-
-      // 저장된 JWT 토큰 확인
+      // 저장된 JWT 토큰 확인 (SecureStore 로컬 읽기, 빠름)
       const token = await SecureStore.getItemAsync(TOKEN_KEY);
 
-      if (token) {
-        // 토큰으로 사용자 정보 검증
-        const response = await fetch(`${API_URL}/api/auth/mobile/verify`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.user) {
-            // API 클라이언트에 토큰 동기화 (앱 재시작 시 필수)
-            await api.setToken(token);
-            // 네이티브 알람에서 사용할 토큰 동기화
-            if (Platform.OS === "android" && AlarmModule) {
-              try {
-                await AlarmModule.saveAuthToken(token);
-              } catch {}
-            }
-            // isAuthenticated + isLoading을 한번에 set (re-render 1회로 줄임)
-            set({ user: data.user, isAuthenticated: true, isLoading: false });
-            return;
-          }
-        }
-
-        // 토큰이 유효하지 않으면 삭제
-        await SecureStore.deleteItemAsync(TOKEN_KEY);
+      if (!token) {
+        set({ user: null, isAuthenticated: false, isLoading: false });
+        return;
       }
 
-      set({ user: null, isAuthenticated: false, isLoading: false });
+      // 토큰이 있으면 즉시 로그인 상태로 처리 (Optimistic)
+      // 네트워크 verify는 백그라운드에서 수행하여 콜드 스타트 블로킹 제거
+      await api.setToken(token);
+      if (Platform.OS === "android" && AlarmModule) {
+        AlarmModule.saveAuthToken(token).catch(() => {});
+      }
+      set({ isAuthenticated: true, isLoading: false });
+
+      // 백그라운드 토큰 검증 — 실패해도 splash는 이미 숨겨진 상태
+      (async () => {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
+          const response = await fetch(`${API_URL}/api/auth/mobile/verify`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.user) {
+              set({ user: data.user });
+              return;
+            }
+          }
+          // 검증 실패 시에만 로그아웃 (네트워크 오류는 유지)
+          if (response.status === 401 || response.status === 403) {
+            await SecureStore.deleteItemAsync(TOKEN_KEY);
+            set({ user: null, isAuthenticated: false });
+          }
+        } catch {
+          // 네트워크 오류는 조용히 무시 (오프라인에서도 앱 사용 가능)
+        }
+      })();
     } catch (error) {
       if (__DEV__) console.error("Auth check error:", error);
       set({ user: null, isAuthenticated: false, isLoading: false });

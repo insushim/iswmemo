@@ -1,6 +1,9 @@
 import React, { useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  initialWindowMetrics,
+} from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import {
   Platform,
@@ -224,7 +227,7 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: rootBg }}>
-      <SafeAreaProvider>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         {/* Android: 상태바 완전 숨김 - GoalBanner가 그 자리 차지 */}
         <StatusBar
           hidden={Platform.OS === "android"}
