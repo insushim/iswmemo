@@ -53,7 +53,10 @@ function MainTabs() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        lazy: true,
+        // lazy:false — 모든 탭을 cold start 시 미리 mount해서
+        // 첫 방문 시 캐시 로딩 전환이 flicker로 보이는 것 방지.
+        // 할일(Tasks) 탭에서 깜빡임이 없는 이유가 lazy 첫 mount 때문이라 판단.
+        lazy: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
         tabBarStyle: {
