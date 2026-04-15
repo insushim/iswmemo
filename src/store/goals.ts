@@ -9,7 +9,8 @@ interface GoalStoreState {
   isLoaded: boolean;
   togglePinGoal: (goal: Goal) => Promise<void>;
   removePinGoal: (goalId: string) => Promise<void>;
-  updatePinnedGoal: (goal: Goal) => Promise<void>;
+  updatePinnedGoal: (goal: Goal, oldTitle?: string) => Promise<void>;
+  syncPinnedGoals: (allGoals: Goal[]) => void;
   loadPinnedGoals: () => Promise<void>;
 }
 
@@ -40,12 +41,39 @@ export const useGoalStore = create<GoalStoreState>((set, get) => ({
     persistAsync(next);
   },
 
-  updatePinnedGoal: async (goal: Goal) => {
+  updatePinnedGoal: async (goal: Goal, oldTitle?: string) => {
     const { pinnedGoals } = get();
-    const next = pinnedGoals.map(g => g.id === goal.id ? goal : g);
-    // UI 즉시 반영 (SecureStore 느릴 때도 GoalBanner 바로 갱신)
+    // id 매칭 우선, fallback으로 old title 매칭
+    // (pinnedGoals가 stale id를 가진 경우 복구)
+    const next = pinnedGoals.map(g => {
+      if (g.id === goal.id) return goal;
+      if (oldTitle && g.title === oldTitle) return goal;
+      return g;
+    });
+    // UI 즉시 반영 (storage I/O에 블록되지 않도록)
     set({ pinnedGoals: next });
     persistAsync(next);
+  },
+
+  // 서버에서 받아온 최신 goals 목록으로 pinnedGoals 동기화
+  syncPinnedGoals: (allGoals: Goal[]) => {
+    const { pinnedGoals } = get();
+    if (pinnedGoals.length === 0) return;
+    const byId = new Map(allGoals.map(g => [g.id, g]));
+    const byTitle = new Map(allGoals.map(g => [g.title, g]));
+    let changed = false;
+    const next = pinnedGoals.map(p => {
+      const latest = byId.get(p.id) || byTitle.get(p.title);
+      if (latest && latest !== p) {
+        changed = true;
+        return latest;
+      }
+      return p;
+    });
+    if (changed) {
+      set({ pinnedGoals: next });
+      persistAsync(next);
+    }
   },
 
   loadPinnedGoals: async () => {

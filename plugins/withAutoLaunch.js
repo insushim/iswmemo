@@ -518,6 +518,7 @@ import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Build;
 
 import com.facebook.react.bridge.Promise;
@@ -526,9 +527,48 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 
 public class AlarmModule extends ReactContextBaseJavaModule {
+    private static final String PREFS_NAME = "iwmemo_storage";
+
     public AlarmModule(ReactApplicationContext context) { super(context); }
 
     @Override public String getName() { return "AlarmModule"; }
+
+    private SharedPreferences getPrefs() {
+        return getReactApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    }
+
+    @ReactMethod
+    public void savePref(String key, String value, Promise promise) {
+        try {
+            getPrefs().edit().putString(key, value).apply();
+            promise.resolve(true);
+        } catch (Exception e) { promise.reject("ERROR", e.getMessage()); }
+    }
+
+    @ReactMethod
+    public void getPref(String key, Promise promise) {
+        try {
+            promise.resolve(getPrefs().getString(key, null));
+        } catch (Exception e) { promise.reject("ERROR", e.getMessage()); }
+    }
+
+    @ReactMethod
+    public void deletePref(String key, Promise promise) {
+        try {
+            getPrefs().edit().remove(key).apply();
+            promise.resolve(true);
+        } catch (Exception e) { promise.reject("ERROR", e.getMessage()); }
+    }
+
+    @ReactMethod
+    public void saveAuthToken(String token, Promise promise) {
+        try {
+            getPrefs().edit().putString("auth_token", token == null ? "" : token).apply();
+            if (promise != null) promise.resolve(true);
+        } catch (Exception e) {
+            if (promise != null) promise.reject("ERROR", e.getMessage());
+        }
+    }
 
     @ReactMethod
     public void scheduleAlarm(String taskId, String title, double triggerTimeMs, Promise promise) {

@@ -56,6 +56,7 @@ export default function App() {
   const { colors } = useTheme();
   const appReady = useRef(false);
   const [appInitialized, setAppInitialized] = React.useState(false);
+  const [navReady, setNavReady] = React.useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -80,14 +81,20 @@ export default function App() {
   const handleNavigationReady = React.useCallback(() => {
     if (appReady.current) return;
     appReady.current = true;
-    // Navigation이 실제로 렌더링된 후 splash 숨김 → 중간 흰 화면 없음
-    SplashScreen.hideAsync().catch(() => {});
-    // 비필수 작업은 splash 숨긴 후 백그라운드에서 처리
-    syncAuthTokenToNative().catch(() => {});
-    Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
-    Notifications.dismissAllNotificationsAsync().catch(() => {});
-    // 업데이트 확인 (앱 안정화 후 10초 뒤)
-    setTimeout(checkForUpdate, 10000);
+    // Navigation onReady 후 2프레임 대기 → 실제 paint 완료 후 splash 숨김
+    // (onReady는 mount 시점, paint 전이라 곧바로 숨기면 흰 flash 발생 가능)
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        SplashScreen.hideAsync().catch(() => {});
+        setNavReady(true);
+        // 비필수 작업은 splash 숨긴 후 백그라운드에서 처리
+        syncAuthTokenToNative().catch(() => {});
+        Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+        Notifications.dismissAllNotificationsAsync().catch(() => {});
+        // 업데이트 확인 (앱 안정화 후 10초 뒤)
+        setTimeout(checkForUpdate, 10000);
+      });
+    });
   }, []);
 
   // 로그인 후 필요 권한 요청 (다른 앱 위에 표시 → 알람 순서로)
@@ -221,8 +228,8 @@ export default function App() {
     return () => handle.cancel();
   }, [isAuthenticated]);
 
-  // 초기화 전에는 splash 배경과 동일한 색상으로 흰 화면 깜빡임 방지
-  const rootBg = appInitialized ? colors.background : "#6366f1";
+  // Navigation이 완전히 paint되기 전까지 splash 색상 유지 → 흰 flash 방지
+  const rootBg = navReady ? colors.background : "#6366f1";
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: rootBg }}>

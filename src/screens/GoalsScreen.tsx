@@ -44,8 +44,13 @@ const GOALS_CACHE_KEY = "cached_goals_v1";
 
 export default function GoalsScreen() {
   const { colors, scaledFont, cardPadding, textAlign } = useTheme();
-  const { pinnedGoals, togglePinGoal, removePinGoal, updatePinnedGoal } =
-    useGoalStore();
+  const {
+    pinnedGoals,
+    togglePinGoal,
+    removePinGoal,
+    updatePinnedGoal,
+    syncPinnedGoals,
+  } = useGoalStore();
   const [refreshing, setRefreshing] = useState(false);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -81,6 +86,9 @@ export default function GoalsScreen() {
         GOALS_CACHE_KEY,
         JSON.stringify(data || []),
       ).catch(() => {});
+      // 최신 goals 데이터로 pinnedGoals 자동 동기화
+      // (stale id 문제 해결 — GoalBanner가 항상 최신 버전 표시)
+      syncPinnedGoals(data || []);
     } catch (error) {
       console.error("Goals fetch error:", error);
     }
@@ -148,15 +156,17 @@ export default function GoalsScreen() {
             : g,
         ),
       );
-      // 고정된 목표라면 헤더(GoalBanner)가 즉시 반영되도록 store도 갱신
-      if (editId && pinnedGoals.some((g) => g.id === editId)) {
+      // 헤더(GoalBanner) 즉시 반영 — 조건 없이 항상 호출.
+      // updatePinnedGoal은 id 매칭 실패 시 oldTitle로 fallback 매칭하므로
+      // pinnedGoals가 stale id를 가진 경우에도 올바르게 업데이트됨.
+      if (editId && editingGoal) {
         const updated = {
           ...(editingGoal as Goal),
           title,
           type: newGoalType,
           color: selectedColor,
         };
-        updatePinnedGoal(updated);
+        updatePinnedGoal(updated, editingGoal.title);
       }
     }
 
