@@ -130,14 +130,14 @@ function MainTabs() {
 
 const MemoizedMainTabs = React.memo(MainTabs);
 
-export default function Navigation({ onReady }: { onReady?: () => void }) {
+export default function Navigation() {
   const { colors } = useTheme();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   // App.tsx에서 초기화 완료 후 마운트되므로 isLoading/hasToken 체크 불필요
   // isAuthenticated만으로 즉시 올바른 화면 결정 (레이스 컨디션 없음)
   return (
-    <NavigationContainer onReady={onReady}>
+    <NavigationContainer>
       <Stack.Navigator
         screenOptions={{
           headerShown: false,

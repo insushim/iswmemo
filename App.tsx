@@ -56,12 +56,11 @@ export default function App() {
   const { colors } = useTheme();
   const appReady = useRef(false);
   const [appInitialized, setAppInitialized] = React.useState(false);
-  const [navReady, setNavReady] = React.useState(false);
 
   useEffect(() => {
     const init = async () => {
       try {
-        // 필수 초기화만 병렬 로드 (콜드 스타트 시간 단축)
+        // 필수 초기화 병렬 로드 (콜드 스타트 시간 단축)
         await Promise.all([
           loadSettings(),
           checkAuth(),
@@ -71,30 +70,25 @@ export default function App() {
         console.error("Init failed:", error);
       } finally {
         // 초기화 완료 → Navigation 즉시 마운트
-        // Splash는 Navigation onReady 콜백에서 숨김 (아래 Navigation 컴포넌트 참조)
         setAppInitialized(true);
+        // 렌더링 안정화 후 splash 숨김 (2 RAF)
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            SplashScreen.hideAsync().catch(() => {});
+            appReady.current = true;
+            // 비필수 작업은 splash 숨긴 후 백그라운드에서 처리
+            syncAuthTokenToNative().catch(() => {});
+            Notifications.cancelAllScheduledNotificationsAsync().catch(
+              () => {},
+            );
+            Notifications.dismissAllNotificationsAsync().catch(() => {});
+            // 업데이트 확인 (앱 안정화 후 10초 뒤)
+            setTimeout(checkForUpdate, 10000);
+          });
+        });
       }
     };
     init();
-  }, []);
-
-  const handleNavigationReady = React.useCallback(() => {
-    if (appReady.current) return;
-    appReady.current = true;
-    // Navigation onReady 후 2프레임 대기 → 실제 paint 완료 후 splash 숨김
-    // (onReady는 mount 시점, paint 전이라 곧바로 숨기면 흰 flash 발생 가능)
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        SplashScreen.hideAsync().catch(() => {});
-        setNavReady(true);
-        // 비필수 작업은 splash 숨긴 후 백그라운드에서 처리
-        syncAuthTokenToNative().catch(() => {});
-        Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
-        Notifications.dismissAllNotificationsAsync().catch(() => {});
-        // 업데이트 확인 (앱 안정화 후 10초 뒤)
-        setTimeout(checkForUpdate, 10000);
-      });
-    });
   }, []);
 
   // 로그인 후 필요 권한 요청 (다른 앱 위에 표시 → 알람 순서로)
@@ -228,8 +222,8 @@ export default function App() {
     return () => handle.cancel();
   }, [isAuthenticated]);
 
-  // Navigation이 완전히 paint되기 전까지 splash 색상 유지 → 흰 flash 방지
-  const rootBg = navReady ? colors.background : "#6366f1";
+  // 초기화 전에는 splash 배경과 동일한 색상 유지 → 흰 flash 방지
+  const rootBg = appInitialized ? colors.background : "#6366f1";
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: rootBg }}>
@@ -239,7 +233,7 @@ export default function App() {
           hidden={Platform.OS === "android"}
           style={darkMode ? "light" : "dark"}
         />
-        {appInitialized ? <Navigation onReady={handleNavigationReady} /> : null}
+        {appInitialized ? <Navigation /> : null}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
