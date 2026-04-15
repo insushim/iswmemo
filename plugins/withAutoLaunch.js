@@ -48,12 +48,15 @@ function withAutoLaunch(config) {
     addPerm('android.permission.WAKE_LOCK');
     addPerm('android.permission.USE_FULL_SCREEN_INTENT');
 
-    // Activity에 showWhenLocked, turnScreenOn 추가
+    // Activity에 showWhenLocked만 추가 (잠금화면 위에 표시).
+    // turnScreenOn은 추가하지 않음 — resume 때마다 화면 강제 ON을 시도해
+    // 잠금화면 절전 사이클과 충돌하며 깜빡임 유발.
     if (app.activity) {
       app.activity.forEach((activity) => {
         if (activity.$?.['android:name'] === '.MainActivity') {
           activity.$['android:showWhenLocked'] = 'true';
-          activity.$['android:turnScreenOn'] = 'true';
+          // 혹시 이전 prebuild 결과로 남아있다면 제거
+          delete activity.$['android:turnScreenOn'];
         }
       });
     }

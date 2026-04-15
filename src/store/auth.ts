@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import { Platform, NativeModules } from "react-native";
-import * as SecureStore from "expo-secure-store";
 import { User } from "../types";
 import { api } from "../lib/api";
 import { API_URL } from "../lib/config";
+import { persistentGet, persistentSet, persistentDelete } from "../lib/storage";
 
 const { AlarmModule } = NativeModules;
 
@@ -50,7 +50,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if (response.ok && data.success) {
         // JWT 토큰 안전하게 저장
-        await SecureStore.setItemAsync(TOKEN_KEY, data.token);
+        await persistentSet(TOKEN_KEY, data.token);
 
         // 네이티브 알람에서 사용할 토큰 저장
         if (Platform.OS === "android" && AlarmModule) {
@@ -102,7 +102,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     // 저장된 토큰 삭제
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await persistentDelete(TOKEN_KEY);
 
     // 네이티브 알람 토큰도 삭제
     if (Platform.OS === "android" && AlarmModule) {
@@ -120,7 +120,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   checkAuth: async () => {
     try {
       // 저장된 JWT 토큰 확인 (SecureStore 로컬 읽기, 빠름)
-      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+      const token = await persistentGet(TOKEN_KEY);
 
       if (!token) {
         set({ user: null, isAuthenticated: false, isLoading: false });

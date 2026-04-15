@@ -1,6 +1,6 @@
-import * as SecureStore from "expo-secure-store";
 import { NativeModules, Platform } from "react-native";
 import { API_URL } from "./config";
+import { persistentGet, persistentSet, persistentDelete } from "./storage";
 import type {
   Task,
   Habit,
@@ -140,9 +140,9 @@ class ApiClient {
 
   async setToken(token: string): Promise<void> {
     this.token = token;
-    await SecureStore.setItemAsync("auth_token", token);
+    await persistentSet("auth_token", token);
     // Native AlarmActivity에서 삭제 API 호출 시 사용할 토큰 저장
-    if (Platform.OS === "android" && NativeModules.AlarmModule) {
+    if (Platform.OS === "android" && NativeModules.AlarmModule?.saveAuthToken) {
       try {
         await NativeModules.AlarmModule.saveAuthToken(token);
       } catch (e) {}
@@ -151,12 +151,11 @@ class ApiClient {
 
   async getToken(): Promise<string | null> {
     if (!this.token) {
-      this.token = await SecureStore.getItemAsync("auth_token");
-      // Native 측에도 토큰 동기화 (앱 재시작 시)
+      this.token = await persistentGet("auth_token");
       if (
         this.token &&
         Platform.OS === "android" &&
-        NativeModules.AlarmModule
+        NativeModules.AlarmModule?.saveAuthToken
       ) {
         try {
           NativeModules.AlarmModule.saveAuthToken(this.token);
@@ -168,7 +167,7 @@ class ApiClient {
 
   async clearToken(): Promise<void> {
     this.token = null;
-    await SecureStore.deleteItemAsync("auth_token");
+    await persistentDelete("auth_token");
   }
 
   async fetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {

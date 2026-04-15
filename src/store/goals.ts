@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import * as SecureStore from 'expo-secure-store';
 import { Goal } from '../types';
+import { persistentGet, persistentSet } from '../lib/storage';
 
 const PINNED_GOALS_KEY = 'pinned_goals';
 
@@ -13,6 +13,13 @@ interface GoalStoreState {
   loadPinnedGoals: () => Promise<void>;
 }
 
+// set 먼저, persist는 백그라운드 — UI가 storage I/O에 블록되지 않도록
+const persistAsync = (value: Goal[]) => {
+  persistentSet(PINNED_GOALS_KEY, JSON.stringify(value)).catch((e) => {
+    console.error('Failed to persist pinned goals:', e);
+  });
+};
+
 export const useGoalStore = create<GoalStoreState>((set, get) => ({
   pinnedGoals: [],
   isLoaded: false,
@@ -20,44 +27,30 @@ export const useGoalStore = create<GoalStoreState>((set, get) => ({
   togglePinGoal: async (goal: Goal) => {
     const { pinnedGoals } = get();
     const exists = pinnedGoals.find(g => g.id === goal.id);
-    let next: Goal[];
-    if (exists) {
-      next = pinnedGoals.filter(g => g.id !== goal.id);
-    } else {
-      next = [...pinnedGoals, goal];
-    }
-    try {
-      await SecureStore.setItemAsync(PINNED_GOALS_KEY, JSON.stringify(next));
-      set({ pinnedGoals: next });
-    } catch (error) {
-      console.error('Failed to save pinned goals:', error);
-    }
+    const next: Goal[] = exists
+      ? pinnedGoals.filter(g => g.id !== goal.id)
+      : [...pinnedGoals, goal];
+    set({ pinnedGoals: next });
+    persistAsync(next);
   },
 
   removePinGoal: async (goalId: string) => {
     const next = get().pinnedGoals.filter(g => g.id !== goalId);
-    try {
-      await SecureStore.setItemAsync(PINNED_GOALS_KEY, JSON.stringify(next));
-      set({ pinnedGoals: next });
-    } catch (error) {
-      console.error('Failed to remove pinned goal:', error);
-    }
+    set({ pinnedGoals: next });
+    persistAsync(next);
   },
 
   updatePinnedGoal: async (goal: Goal) => {
     const { pinnedGoals } = get();
     const next = pinnedGoals.map(g => g.id === goal.id ? goal : g);
-    try {
-      await SecureStore.setItemAsync(PINNED_GOALS_KEY, JSON.stringify(next));
-      set({ pinnedGoals: next });
-    } catch (error) {
-      console.error('Failed to update pinned goal:', error);
-    }
+    // UI 즉시 반영 (SecureStore 느릴 때도 GoalBanner 바로 갱신)
+    set({ pinnedGoals: next });
+    persistAsync(next);
   },
 
   loadPinnedGoals: async () => {
     try {
-      const data = await SecureStore.getItemAsync(PINNED_GOALS_KEY);
+      const data = await persistentGet(PINNED_GOALS_KEY);
       if (data) {
         set({ pinnedGoals: JSON.parse(data), isLoaded: true });
       } else {

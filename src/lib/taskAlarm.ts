@@ -1,6 +1,6 @@
 import { NativeModules, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
-import * as SecureStore from "expo-secure-store";
+import { persistentGet } from "./storage";
 
 const { AlarmModule } = NativeModules;
 
@@ -22,7 +22,7 @@ export async function registerExpoPushToken(): Promise<void> {
     });
     const pushToken = tokenData.data;
 
-    const authToken = await SecureStore.getItemAsync("auth_token");
+    const authToken = await persistentGet("auth_token");
     if (!authToken) return;
 
     await fetch(
@@ -46,7 +46,7 @@ export async function registerExpoPushToken(): Promise<void> {
 export async function syncAuthTokenToNative(): Promise<void> {
   if (Platform.OS !== "android" || !AlarmModule) return;
   try {
-    const token = await SecureStore.getItemAsync("auth_token");
+    const token = await persistentGet("auth_token");
     if (token) await AlarmModule.saveAuthToken(token);
   } catch (e) {}
 }
