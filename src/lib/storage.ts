@@ -1,27 +1,37 @@
-// SecureStore가 Android 일부 기기/ROM에서 cold start 시 null을 반환하는 문제가 있어,
-// 앱 내부 저장소(expo-file-system)에 이중 저장한다.
-// - 쓰기: SecureStore + 파일 동시 (둘 중 하나라도 성공하면 OK)
-// - 읽기: SecureStore 우선, 없거나 실패 시 파일, 파일에 있으면 SecureStore에도 복구
+// SecureStore가 일부 Android 기기/ROM에서 cold start 시 null을 반환하는 이슈를 우회.
+// expo-file-system v19 (class-based API)을 이용해 앱 내부 저장소 파일에 이중 저장.
+// - 쓰기: SecureStore + 파일 동시 (둘 중 하나라도 성공)
+// - 읽기: SecureStore 우선, 없으면 파일, 파일에 있으면 SecureStore에도 복구
 // - 삭제: 둘 다 삭제
-// JWT 토큰 등 민감한 값을 위한 용도. 파일은 앱 전용 internal 저장소라 다른 앱에서 접근 불가.
+// JWT 토큰 등 민감한 값을 위한 용도. 파일은 앱 전용 internal 저장소라 다른 앱 접근 불가.
 import * as SecureStore from "expo-secure-store";
-import * as FileSystem from "expo-file-system";
+import { File, Directory, Paths } from "expo-file-system";
 
-const FILE_DIR = (FileSystem.documentDirectory || "") + "persist/";
+let persistDir: Directory | null = null;
 
-async function ensureDir() {
+function getDir(): Directory | null {
+  if (persistDir) return persistDir;
   try {
-    const info = await FileSystem.getInfoAsync(FILE_DIR);
-    if (!info.exists) {
-      await FileSystem.makeDirectoryAsync(FILE_DIR, { intermediates: true });
+    const dir = new Directory(Paths.document, "persist");
+    if (!dir.exists) {
+      dir.create({ intermediates: true, idempotent: true });
     }
-  } catch {}
+    persistDir = dir;
+    return dir;
+  } catch {
+    return null;
+  }
 }
 
-function fileFor(key: string) {
-  // 키에 슬래시/스페이스 방지
+function fileFor(key: string): File | null {
+  const dir = getDir();
+  if (!dir) return null;
   const safe = key.replace(/[^a-zA-Z0-9_.-]/g, "_");
-  return FILE_DIR + safe + ".txt";
+  try {
+    return new File(dir, `${safe}.txt`);
+  } catch {
+    return null;
+  }
 }
 
 export async function persistentSet(key: string, value: string): Promise<void> {
@@ -33,8 +43,15 @@ export async function persistentSet(key: string, value: string): Promise<void> {
     secureStoreError = e;
   }
   try {
-    await ensureDir();
-    await FileSystem.writeAsStringAsync(fileFor(key), value);
+    const f = fileFor(key);
+    if (f) {
+      if (!f.exists) {
+        f.create({ intermediates: true, overwrite: true });
+      }
+      f.write(value);
+    } else {
+      fileError = new Error("file ref unavailable");
+    }
   } catch (e) {
     fileError = e;
   }
@@ -44,23 +61,21 @@ export async function persistentSet(key: string, value: string): Promise<void> {
 }
 
 export async function persistentGet(key: string): Promise<string | null> {
-  // 1. SecureStore 시도
-  let fromSecure: string | null = null;
+  // 1. SecureStore
   try {
-    fromSecure = await SecureStore.getItemAsync(key);
-    if (fromSecure) return fromSecure;
+    const v = await SecureStore.getItemAsync(key);
+    if (v) return v;
   } catch {}
 
-  // 2. 파일 시도
+  // 2. File
   try {
-    const path = fileFor(key);
-    const info = await FileSystem.getInfoAsync(path);
-    if (info.exists) {
-      const fromFile = await FileSystem.readAsStringAsync(path);
-      if (fromFile) {
-        // SecureStore에 복구 (실패해도 무시)
-        SecureStore.setItemAsync(key, fromFile).catch(() => {});
-        return fromFile;
+    const f = fileFor(key);
+    if (f && f.exists) {
+      const content = await f.text();
+      if (content) {
+        // SecureStore 복구 시도 (실패해도 무시)
+        SecureStore.setItemAsync(key, content).catch(() => {});
+        return content;
       }
     }
   } catch {}
@@ -73,6 +88,9 @@ export async function persistentDelete(key: string): Promise<void> {
     await SecureStore.deleteItemAsync(key);
   } catch {}
   try {
-    await FileSystem.deleteAsync(fileFor(key), { idempotent: true });
+    const f = fileFor(key);
+    if (f && f.exists) {
+      f.delete();
+    }
   } catch {}
 }
