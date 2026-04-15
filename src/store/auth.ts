@@ -135,7 +135,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       set({ isAuthenticated: true, isLoading: false });
 
-      // 백그라운드 토큰 검증 — 실패해도 splash는 이미 숨겨진 상태
+      // 백그라운드 토큰 검증 — 사용자 정보 업데이트만 수행, 자동 로그아웃은 하지 않음.
+      // 토큰이 실제로 invalid하면 이후 API 호출이 실패하면서 재로그인 유도됨.
+      // 여기서 강제 로그아웃하면 서버 일시 오류/네트워크 불안정 시 사용자가 계속 튕겨나감.
       (async () => {
         try {
           const controller = new AbortController();
@@ -154,13 +156,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             const data = await response.json();
             if (data.success && data.user) {
               set({ user: data.user });
-              return;
             }
-          }
-          // 검증 실패 시에만 로그아웃 (네트워크 오류는 유지)
-          if (response.status === 401 || response.status === 403) {
-            await SecureStore.deleteItemAsync(TOKEN_KEY);
-            set({ user: null, isAuthenticated: false });
           }
         } catch {
           // 네트워크 오류는 조용히 무시 (오프라인에서도 앱 사용 가능)

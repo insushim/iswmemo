@@ -810,16 +810,14 @@ public class AlarmDeleteReceiver extends BroadcastReceiver {
               match[0],
               `${match[0]}
 
-    // 잠금화면 위에 앱 표시
+    // 잠금화면 위에 앱 표시 (setTurnScreenOn 제거 — 화면 자동꺼짐 시 flicker 원인)
+    // 화면 wake은 ScreenUnlockService의 wake lock(ACQUIRE_CAUSES_WAKEUP)이 담당
     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
       setShowWhenLocked(true)
-      setTurnScreenOn(true)
     } else {
       @Suppress("DEPRECATION")
       window.addFlags(
-        android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-        android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-        android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+        android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
       )
     }
 
