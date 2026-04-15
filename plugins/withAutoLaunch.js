@@ -165,6 +165,8 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.media.AudioManager;
 import android.telephony.TelephonyManager;
+import android.app.ActivityManager;
+import java.util.List;
 
 public class ScreenUnlockService extends Service {
     private static final String CHANNEL_ID = "auto_launch_channel";
@@ -242,7 +244,25 @@ public class ScreenUnlockService extends Service {
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setPriority(Notification.PRIORITY_MIN)
+            .setVisibility(Notification.VISIBILITY_SECRET)
             .build();
+    }
+
+    private boolean isAppInForeground(Context context) {
+        try {
+            ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am == null) return false;
+            List<ActivityManager.RunningAppProcessInfo> procs = am.getRunningAppProcesses();
+            if (procs == null) return false;
+            String pkg = context.getPackageName();
+            for (ActivityManager.RunningAppProcessInfo proc : procs) {
+                if (proc.processName != null && proc.processName.equals(pkg)
+                    && proc.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {}
+        return false;
     }
 
     private void registerScreenReceiver() {
@@ -286,6 +306,7 @@ public class ScreenUnlockService extends Service {
 
     private void launchApp(Context context) {
         if (isPhoneCallActive(context)) return;
+        if (isAppInForeground(context)) return;
         long now = System.currentTimeMillis();
         if (now - lastLaunchTime < LAUNCH_DEBOUNCE_MS) return;
         lastLaunchTime = now;
@@ -293,12 +314,13 @@ public class ScreenUnlockService extends Service {
             Intent launchIntent = new Intent(context, MainActivity.class);
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             launchIntent.putExtra("from_screen_on", true);
+            // PARTIAL_WAKE_LOCK: CPU만 깨움 (화면 안 건드림, flicker 방지)
             PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
             if (pm != null) {
                 PowerManager.WakeLock wl = pm.newWakeLock(
-                    PowerManager.FULL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE,
-                    "growthpad:screen_on_wake");
-                wl.acquire(5000);
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "growthpad:launch_cpu");
+                wl.acquire(1500);
             }
             context.startActivity(launchIntent);
         } catch (Exception e) { e.printStackTrace(); }
