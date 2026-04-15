@@ -2,13 +2,13 @@
   "expo": {
     "name": "또박또박",
     "slug": "growthpad-mobile",
-    "version": "3.9.11",
+    "version": "3.9.12",
     "owner": "insushim",
     "orientation": "portrait",
     "updates": {
       "enabled": false
     },
-    "runtimeVersion": "3.9.11",
+    "runtimeVersion": "3.9.12",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "scheme": "growthpad",
@@ -41,7 +41,8 @@
         "android.permission.WAKE_LOCK",
         "android.permission.USE_FULL_SCREEN_INTENT",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.REQUEST_INSTALL_PACKAGES"
       ]
     },
     "web": {

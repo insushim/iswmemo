@@ -1,9 +1,14 @@
-import { Alert, Linking, Platform } from 'react-native';
+import { Alert, Linking, Platform, NativeModules } from 'react-native';
 import { APP_VERSION } from './config';
+
+const { AlarmModule } = NativeModules;
 
 const GITHUB_OWNER = 'insushim';
 const GITHUB_REPO = 'iswmemo';
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+
+// 이중 다운로드 방지: 업데이트 플로우가 진행 중이면 추가 탭 무시
+let updateInProgress = false;
 
 function compareVersions(current: string, latest: string): number {
   const c = current.replace(/^v/, '').split('.').map(Number);
@@ -17,6 +22,34 @@ function compareVersions(current: string, latest: string): number {
   return 0;
 }
 
+async function startUpdate(apkUrl: string): Promise<void> {
+  if (updateInProgress) return;
+  updateInProgress = true;
+  try {
+    // 네이티브 다운로드 + 설치 (중복 브라우저 다운로드 방지 + 자동 인스톨러 열림)
+    if (AlarmModule?.downloadAndInstallApk) {
+      Alert.alert(
+        '다운로드 중',
+        '업데이트 파일을 받는 중입니다. 완료되면 설치 화면이 자동으로 열립니다.',
+      );
+      try {
+        await AlarmModule.downloadAndInstallApk(apkUrl);
+        return;
+      } catch (e) {
+        // 네이티브 실패 시 브라우저 fallback
+        if (__DEV__) console.error('Native APK install failed:', e);
+      }
+    }
+    // Fallback: 구 방식 (브라우저 열기)
+    await Linking.openURL(apkUrl);
+  } finally {
+    // 잠깐 지연 후 플래그 해제 (동일 알림 내 연타 방지)
+    setTimeout(() => {
+      updateInProgress = false;
+    }, 5000);
+  }
+}
+
 export async function checkForUpdate(): Promise<void> {
   if (Platform.OS !== 'android') return;
 
@@ -25,7 +58,7 @@ export async function checkForUpdate(): Promise<void> {
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     const response = await fetch(GITHUB_API_URL, {
-      headers: { 'Accept': 'application/vnd.github.v3+json' },
+      headers: { Accept: 'application/vnd.github.v3+json' },
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
@@ -37,11 +70,9 @@ export async function checkForUpdate(): Promise<void> {
 
     if (!latestVersion || compareVersions(APP_VERSION, latestVersion) <= 0) return;
 
-    // APK 에셋 찾기
     const apkAsset = release.assets?.find(
-      (a: any) => a.name?.endsWith('.apk') && a.browser_download_url
+      (a: any) => a.name?.endsWith('.apk') && a.browser_download_url,
     );
-
     if (!apkAsset) return;
 
     Alert.alert(
@@ -52,7 +83,7 @@ export async function checkForUpdate(): Promise<void> {
         {
           text: '업데이트',
           onPress: () => {
-            Linking.openURL(apkAsset.browser_download_url);
+            startUpdate(apkAsset.browser_download_url);
           },
         },
       ],
