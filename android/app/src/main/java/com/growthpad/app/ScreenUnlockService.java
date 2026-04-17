@@ -25,6 +25,8 @@ public class ScreenUnlockService extends Service {
     private static final int NOTIFICATION_ID = 2001;
     private static final int FULLSCREEN_NOTIFICATION_ID = 3001;
     private static final long LAUNCH_DEBOUNCE_MS = 2500;
+    private static final long SCREEN_ON_LAUNCH_DELAY_MS = 200;
+    private static final long SCREEN_ON_WAKELOCK_MS = 2000;
     private BroadcastReceiver screenReceiver;
     private Handler handler = new Handler(Looper.getMainLooper());
     private long lastLaunchTime = 0;
@@ -121,7 +123,18 @@ public class ScreenUnlockService extends Service {
             @Override
             public void onReceive(Context context, Intent intent) {
                 if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
-                    handler.postDelayed(() -> launchApp(context), 300);
+                    // CPU를 즉시 깨워 launch 시점까지 hot 유지 → keyguard 위 진입 버벅임 완화
+                    // 화면은 이미 파워 버튼으로 켜진 상태이므로 PARTIAL로 충분
+                    try {
+                        PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+                        if (pm != null) {
+                            PowerManager.WakeLock wl = pm.newWakeLock(
+                                PowerManager.PARTIAL_WAKE_LOCK,
+                                "growthpad:screen_on_cpu");
+                            wl.acquire(SCREEN_ON_WAKELOCK_MS);
+                        }
+                    } catch (Exception e) {}
+                    handler.postDelayed(() -> launchApp(context), SCREEN_ON_LAUNCH_DELAY_MS);
                 }
             }
         };
@@ -166,18 +179,13 @@ public class ScreenUnlockService extends Service {
         lastLaunchTime = now;
         try {
             Intent launchIntent = new Intent(context, MainActivity.class);
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            // NO_ANIMATION: keyguard 위에 진입할 때 window 슬라이드 애니메이션 제거 → 깜빡임 완화
+            launchIntent.addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP
+                | Intent.FLAG_ACTIVITY_NO_ANIMATION);
             launchIntent.putExtra("from_screen_on", true);
-            // PARTIAL_WAKE_LOCK: CPU만 짧게 깨움 (화면 안 건드림)
-            // FULL_WAKE_LOCK + ACQUIRE_CAUSES_WAKEUP + ON_AFTER_RELEASE 조합은
-            // 화면 강제 ON → SCREEN_ON 재발생 + 전원 관리 충돌 → 깜빡임 유발
-            PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-            if (pm != null) {
-                PowerManager.WakeLock wl = pm.newWakeLock(
-                    PowerManager.PARTIAL_WAKE_LOCK,
-                    "growthpad:launch_cpu");
-                wl.acquire(1500);
-            }
             context.startActivity(launchIntent);
         } catch (Exception e) { e.printStackTrace(); }
     }

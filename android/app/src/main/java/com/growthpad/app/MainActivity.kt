@@ -33,6 +33,12 @@ class MainActivity : ReactActivity() {
       )
     }
 
+    // keyguard 위로 올라올 때 기본 enter 애니메이션 제거 → cold start 시 깜빡임 완화
+    // ScreenUnlockService가 보내는 intent에도 NO_ANIMATION 플래그가 있지만
+    // cold start(프로세스 없는 상태) 경로에서도 일관되게 적용
+    @Suppress("DEPRECATION")
+    overridePendingTransition(0, 0)
+
     // 화면 해제 시 자동 실행 서비스
     try {
       val serviceIntent = android.content.Intent(this, ScreenUnlockService::class.java)
