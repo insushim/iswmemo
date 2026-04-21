@@ -25,17 +25,21 @@ public class ScreenUnlockService extends Service {
     private static final int NOTIFICATION_ID = 2001;
     private static final int FULLSCREEN_NOTIFICATION_ID = 3001;
     private static final long LAUNCH_DEBOUNCE_MS = 2500;
-    // keyguard window 준비 기다림 (0은 일부 기기서 이상동작)
-    private static final long SCREEN_ON_LAUNCH_DELAY_MS = 200;
+    // keyguard window 준비 기다림 + passive wake 감지 (너무 짧으면 isInteractive 체크가 false negative)
+    private static final long SCREEN_ON_LAUNCH_DELAY_MS = 350;
     private static final long USER_PRESENT_LAUNCH_DELAY_MS = 100;
-    private static final long SCREEN_ON_WAKELOCK_MS = 2000;
+    private static final long SCREEN_ON_WAKELOCK_MS = 2500;
+    // 서비스 시작 직후(업데이트 설치/부팅 등) N초 동안 auto-launch 억제 — JS 번들 cold init 충돌 방지
+    private static final long SERVICE_COLD_START_GUARD_MS = 15000;
     private BroadcastReceiver screenReceiver;
     private Handler handler = new Handler(Looper.getMainLooper());
     private long lastLaunchTime = 0;
+    private long serviceStartTime = 0;
 
     @Override
     public void onCreate() {
         super.onCreate();
+        serviceStartTime = System.currentTimeMillis();
         createNotificationChannel();
         createFullScreenChannel();
         try {
@@ -176,6 +180,10 @@ public class ScreenUnlockService extends Service {
     }
 
     private void launchApp(Context context) {
+        long now = System.currentTimeMillis();
+        // 서비스 cold start 직후(업데이트 설치/부팅) auto-launch 억제
+        // JS 번들 cold init 중 MainActivity launch → "엄청난 깜빡임" 방지
+        if (serviceStartTime > 0 && now - serviceStartTime < SERVICE_COLD_START_GUARD_MS) return;
         // passive wake(알림/센서/도즈종료) 대응: delay 동안 화면이 이미 꺼져가는 중이면 abort.
         // 주의: isKeyguardLocked 체크는 하지 않음 — 잠금화면 위 자동 표시가 core UX
         try {
@@ -187,7 +195,6 @@ public class ScreenUnlockService extends Service {
         // 이미 앱이 포그라운드면 재런치 skip
         if (isAppInForeground(context)) return;
         // 디바운싱: 마지막 런치로부터 2.5초 이내면 무시
-        long now = System.currentTimeMillis();
         if (now - lastLaunchTime < LAUNCH_DEBOUNCE_MS) return;
         lastLaunchTime = now;
         try {
