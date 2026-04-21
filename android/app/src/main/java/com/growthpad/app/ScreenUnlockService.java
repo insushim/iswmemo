@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.app.KeyguardManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -25,8 +26,10 @@ public class ScreenUnlockService extends Service {
     private static final int NOTIFICATION_ID = 2001;
     private static final int FULLSCREEN_NOTIFICATION_ID = 3001;
     private static final long LAUNCH_DEBOUNCE_MS = 2500;
-    private static final long SCREEN_ON_LAUNCH_DELAY_MS = 200;
-    private static final long SCREEN_ON_WAKELOCK_MS = 2000;
+    // USER_PRESENT 후 keyguard dismiss 애니메이션 끝나기 기다림 (0은 일부 기기서 이상동작)
+    private static final long USER_PRESENT_LAUNCH_DELAY_MS = 100;
+    // SCREEN_ON 부터 USER_PRESENT까지 CPU hot 유지 (잠금해제 지연 대비)
+    private static final long SCREEN_ON_WAKELOCK_MS = 3000;
     private BroadcastReceiver screenReceiver;
     private Handler handler = new Handler(Looper.getMainLooper());
     private long lastLaunchTime = 0;
@@ -122,9 +125,10 @@ public class ScreenUnlockService extends Service {
         screenReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
-                    // CPU를 즉시 깨워 launch 시점까지 hot 유지 → keyguard 위 진입 버벅임 완화
-                    // 화면은 이미 파워 버튼으로 켜진 상태이므로 PARTIAL로 충분
+                String action = intent.getAction();
+                if (Intent.ACTION_SCREEN_ON.equals(action)) {
+                    // SCREEN_ON은 passive wake(알림/센서/도즈종료)에도 fire되므로 여기서는 실행하지 않음.
+                    // CPU만 잠깐 깨워 실제 잠금해제(USER_PRESENT)까지 cold 상태 방지.
                     try {
                         PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
                         if (pm != null) {
@@ -134,12 +138,15 @@ public class ScreenUnlockService extends Service {
                             wl.acquire(SCREEN_ON_WAKELOCK_MS);
                         }
                     } catch (Exception e) {}
-                    handler.postDelayed(() -> launchApp(context), SCREEN_ON_LAUNCH_DELAY_MS);
+                } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                    // 사용자가 실제로 잠금을 해제한 시점에만 launch → passive wake flicker 제거
+                    handler.postDelayed(() -> launchApp(context), USER_PRESENT_LAUNCH_DELAY_MS);
                 }
             }
         };
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_SCREEN_ON);
+        filter.addAction(Intent.ACTION_USER_PRESENT);
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(screenReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
@@ -169,9 +176,18 @@ public class ScreenUnlockService extends Service {
     }
 
     private void launchApp(Context context) {
+        // belt-and-suspenders: USER_PRESENT 직후이긴 하지만 delay 동안 화면이 꺼지거나 재잠금될 수 있음
+        try {
+            PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            if (pm != null && !pm.isInteractive()) return;
+        } catch (Exception e) {}
+        try {
+            KeyguardManager km = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
+            if (km != null && km.isKeyguardLocked()) return;
+        } catch (Exception e) {}
         // 전화 수신/통화 중이면 실행하지 않음
         if (isPhoneCallActive(context)) return;
-        // 이미 앱이 포그라운드면 재런치 skip (SCREEN_ON 스팸 방지)
+        // 이미 앱이 포그라운드면 재런치 skip
         if (isAppInForeground(context)) return;
         // 디바운싱: 마지막 런치로부터 2.5초 이내면 무시
         long now = System.currentTimeMillis();
