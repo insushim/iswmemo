@@ -207,7 +207,7 @@ class ApiClient {
 
       return response.json();
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
+      if (err instanceof Error && err.name === "AbortError") {
         throw new Error(
           `Request to ${endpoint} timed out after ${REQUEST_TIMEOUT_MS / 1000}s`,
         );
