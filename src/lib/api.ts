@@ -1,6 +1,7 @@
 import { NativeModules, Platform } from "react-native";
 import { API_URL } from "./config";
 import { persistentGet, persistentSet, persistentDelete } from "./storage";
+import { reportError } from "./errorReporter";
 import type {
   Task,
   Habit,
@@ -195,23 +196,31 @@ class ApiClient {
       config.body = JSON.stringify(options.body);
     }
 
+    const method = (options.method || "GET").toUpperCase();
     try {
       const response = await fetch(`${API_URL}${endpoint}`, config);
 
       if (!response.ok) {
-        const error = await response
+        const errBody = await response
           .json()
           .catch(() => ({ error: "Request failed" }));
-        throw new Error(error.error || `HTTP ${response.status}`);
+        const msg =
+          errBody?.error || `HTTP ${response.status} ${response.statusText || ""}`.trim();
+        const err = new Error(msg);
+        reportError(err, `${method} ${endpoint}`);
+        throw err;
       }
 
       return response.json();
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
-        throw new Error(
+        const timeoutErr = new Error(
           `Request to ${endpoint} timed out after ${REQUEST_TIMEOUT_MS / 1000}s`,
         );
+        reportError(timeoutErr, `${method} ${endpoint}`);
+        throw timeoutErr;
       }
+      reportError(err, `${method} ${endpoint}`);
       throw err;
     } finally {
       clearTimeout(timeoutId);

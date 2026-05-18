@@ -1,4 +1,6 @@
 import './src/lib/polyfills';
+import { installGlobalErrorHandler } from './src/lib/errorReporter';
+installGlobalErrorHandler();
 import { registerRootComponent } from 'expo';
 
 import App from './App';
