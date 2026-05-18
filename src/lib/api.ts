@@ -206,6 +206,14 @@ class ApiClient {
           .catch(() => ({ error: "Request failed" }));
         const msg =
           errBody?.error || `HTTP ${response.status} ${response.statusText || ""}`.trim();
+
+        // 401 → 토큰 만료/무효. 토큰 클리어 + 로그아웃 처리로
+        // Navigation root가 자동으로 LoginScreen으로 전환되게 한다.
+        if (response.status === 401) {
+          await this.handleUnauthorized(msg);
+          throw new Error("세션이 만료되었습니다. 다시 로그인해주세요.");
+        }
+
         const err = new Error(msg);
         reportError(err, `${method} ${endpoint}`);
         throw err;
@@ -224,6 +232,30 @@ class ApiClient {
       throw err;
     } finally {
       clearTimeout(timeoutId);
+    }
+  }
+
+  private unauthorizedHandling = false;
+  private async handleUnauthorized(serverMsg: string): Promise<void> {
+    // 동시 다발 401 폭격 시 한 번만 처리
+    if (this.unauthorizedHandling) return;
+    this.unauthorizedHandling = true;
+    try {
+      await this.clearToken();
+      // circular dep 회피용 동적 require
+      try {
+        const { useAuthStore } = require("../store/auth");
+        useAuthStore.getState().setUser(null);
+      } catch {}
+      reportError(
+        new Error(`세션 만료 (${serverMsg}). 로그인 화면으로 이동합니다.`),
+        "AUTH",
+      );
+    } finally {
+      // 다음 user action 때 다시 시도할 수 있게 약간의 쿨다운 후 해제
+      setTimeout(() => {
+        this.unauthorizedHandling = false;
+      }, 2000);
     }
   }
 
