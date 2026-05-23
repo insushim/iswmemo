@@ -51,8 +51,8 @@ const getDustColor10 = (pm10: number): string => {
 export { getDustLevel, getDustLevel10, getDustColor, getDustColor10 };
 
 // === 캐시 ===
-const WEATHER_CACHE_KEY = "cached_weather_v2";
-const LOCATION_CACHE_KEY = "cached_location_v2"; // v1 무효화: 기존 김제 좌표 등 stale 캐시 제거 (v3.9.21)
+const WEATHER_CACHE_KEY = "cached_weather_v3";
+const LOCATION_CACHE_KEY = "cached_location_v3"; // v2 무효화: Balanced 정확도로 잡힌 부정확 동 좌표 일괄 제거 (v3.9.23)
 let cachedWeather: WeatherData | null = null;
 let cacheTimestamp = 0;
 const CACHE_DURATION = 5 * 60 * 1000; // 5분
@@ -98,8 +98,10 @@ function distanceM(
 
 // 1km 이상 이동 시 날씨 자동 갱신 트리거
 const SIGNIFICANT_MOVE_M = 1000;
-// 날씨 API 요청 시 GPS 흔들림 필터 (forceRefresh가 아닐 때만)
-const JITTER_THRESHOLD_M = 300;
+// 날씨 API 요청 시 GPS 흔들림 필터 (forceRefresh가 아닐 때만).
+// 도시 내 동 경계가 50~200m라 100m 미만으로 유지 — 그래야 화곡↔신월 같은
+// 인접 동 사이에서 정확한 동 표시됨. (v3.9.23 — 기존 300m는 동 단위 부정확)
+const JITTER_THRESHOLD_M = 80;
 
 // === 실시간 GPS 추적 ===
 export async function startLocationWatch(onMove: () => void): Promise<void> {
@@ -111,8 +113,8 @@ export async function startLocationWatch(onMove: () => void): Promise<void> {
 
     locationWatchSub = await Location.watchPositionAsync(
       {
-        accuracy: Location.Accuracy.Balanced,
-        distanceInterval: 200, // 200m 이동마다 콜백
+        accuracy: Location.Accuracy.High, // 동 단위 정밀도 위해 High (~10m). 배터리 영향 minor — distance/time 간격으로 제어
+        distanceInterval: 80, // 80m 이동마다 콜백 (동 경계 감지)
         timeInterval: 30000, // 최소 30초 간격
       },
       async (loc) => {
@@ -344,11 +346,11 @@ export async function getWeather(
           }
         } catch {}
 
-        // 3순위: getCurrentPosition (정확하지만 느릴 수 있음)
+        // 3순위: getCurrentPosition (High 정확도, 동 단위 표시 위해 ~10m 보장)
         try {
           const loc = await withTimeout(
             Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.Balanced,
+              accuracy: Location.Accuracy.High,
             }),
             10000,
             "GPS position",
