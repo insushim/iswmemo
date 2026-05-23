@@ -11,7 +11,9 @@ import {
   Alert,
   AppState,
   InteractionManager,
+  Linking,
 } from "react-native";
+import * as Location from "expo-location";
 import * as SplashScreen from "expo-splash-screen";
 import * as Notifications from "expo-notifications";
 import Navigation from "./src/navigation";
@@ -174,6 +176,89 @@ export default function App() {
         await requestNotificationPermission();
         // Expo 푸시 토큰 등록 (백엔드에 저장, 서버→기기 푸시 가능)
         await registerExpoPushToken();
+
+        // 3.5 위치 권한 (날씨·미세먼지·동네 정보 표시용)
+        try {
+          const current = await Location.getForegroundPermissionsAsync();
+          const granted = current.status === "granted";
+          const fine =
+            (current as { android?: { accuracy?: string } }).android
+              ?.accuracy !== "coarse";
+          if (!granted) {
+            if (current.canAskAgain !== false) {
+              // 시스템 prompt 가능 — 안내 후 요청
+              await new Promise<void>((resolve) => {
+                Alert.alert(
+                  "위치 권한 안내",
+                  "현재 위치의 날씨·미세먼지·동네 정보를 정확히 표시하기 위해 위치 권한이 필요합니다.\n\n다음 화면에서 [정확한 위치] 옵션도 함께 켜주세요.",
+                  [
+                    {
+                      text: "허용하기",
+                      onPress: async () => {
+                        try {
+                          await Location.requestForegroundPermissionsAsync();
+                        } catch {}
+                        resolve();
+                      },
+                    },
+                    {
+                      text: "나중에",
+                      style: "cancel",
+                      onPress: () => resolve(),
+                    },
+                  ],
+                  { cancelable: false },
+                );
+              });
+            } else {
+              // 영구 거부 — 설정으로 안내
+              await new Promise<void>((resolve) => {
+                Alert.alert(
+                  "위치 권한 필요",
+                  "위치 권한이 꺼져 있어 날씨·미세먼지·동네 정보를 정확히 표시할 수 없습니다.\n\n[설정 → 권한 → 위치]에서 켜주세요.",
+                  [
+                    {
+                      text: "설정으로 이동",
+                      onPress: () => {
+                        Linking.openSettings().catch(() => {});
+                        resolve();
+                      },
+                    },
+                    {
+                      text: "나중에",
+                      style: "cancel",
+                      onPress: () => resolve(),
+                    },
+                  ],
+                  { cancelable: false },
+                );
+              });
+            }
+          } else if (!fine) {
+            // 권한은 있는데 "대략적 위치"만 켜진 경우 — 정확한 위치 안내
+            await new Promise<void>((resolve) => {
+              Alert.alert(
+                "정확한 위치 켜기",
+                "현재 [대략적 위치]만 허용돼 있어 동·구 단위가 부정확할 수 있습니다.\n\n[설정 → 권한 → 위치 → 정확한 위치 사용] 토글을 켜주세요.",
+                [
+                  {
+                    text: "설정으로 이동",
+                    onPress: () => {
+                      Linking.openSettings().catch(() => {});
+                      resolve();
+                    },
+                  },
+                  {
+                    text: "나중에",
+                    style: "cancel",
+                    onPress: () => resolve(),
+                  },
+                ],
+                { cancelable: false },
+              );
+            });
+          }
+        } catch {}
 
         // 4. 전체 화면 알림 권한 (Android 14+, 잠금화면 알람 표시 필수)
         try {
