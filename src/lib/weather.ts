@@ -51,8 +51,8 @@ const getDustColor10 = (pm10: number): string => {
 export { getDustLevel, getDustLevel10, getDustColor, getDustColor10 };
 
 // === 캐시 ===
-const WEATHER_CACHE_KEY = "cached_weather_v1";
-const LOCATION_CACHE_KEY = "cached_location_v1";
+const WEATHER_CACHE_KEY = "cached_weather_v2";
+const LOCATION_CACHE_KEY = "cached_location_v2"; // v1 무효화: 기존 김제 좌표 등 stale 캐시 제거 (v3.9.21)
 let cachedWeather: WeatherData | null = null;
 let cacheTimestamp = 0;
 const CACHE_DURATION = 5 * 60 * 1000; // 5분
@@ -297,6 +297,17 @@ export async function getWeather(
     Date.now() - cacheTimestamp < CACHE_DURATION
   )
     return cachedWeather;
+
+  // forceRefresh 시 위치 캐시 강제 reset
+  // → 사용자가 도시 간 이동했는데 GPS 한 번 실패하면 stale 캐시로 fallback 되던 버그 차단
+  if (forceRefresh) {
+    lastLat = 0;
+    lastLon = 0;
+    lastSido = "";
+    lastCity = "";
+    lastDong = "";
+    locationLoaded = false;
+  }
 
   try {
     let lat = DEFAULT_LAT,

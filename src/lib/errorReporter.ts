@@ -20,18 +20,28 @@ function shouldSkip(err: unknown): boolean {
 
 export function reportError(err: unknown, context?: string): void {
   if (shouldSkip(err)) return;
-  const now = Date.now();
-  if (now - lastShownAt < MIN_INTERVAL_MS) return;
-  lastShownAt = now;
 
   const e = err as any;
   const name = e?.name || "Error";
   const message = e?.message || String(err);
+
+  // 운영 빌드에서는 사용자에게 절대 Alert 띄우지 않는다 (디버그 noise 차단).
+  // 진짜 원인 추적은 v3.9.19에서 끝났고, 이후로는 화면 caller가
+  // 자체 catch로 사용자 친화 메시지 처리.
+  if (!__DEV__) {
+    console.warn(`[${context || "API"}] ${name}: ${message}`);
+    return;
+  }
+
+  // dev 빌드에서만 Alert (개발 중 silent fail 추적 유지)
+  const now = Date.now();
+  if (now - lastShownAt < MIN_INTERVAL_MS) return;
+  lastShownAt = now;
+
   const stackFirstLine = String(e?.stack || "")
     .split("\n")
     .slice(0, 2)
     .join("\n");
-
   const body = [
     context ? `[${context}]` : null,
     `${name}: ${message}`,
@@ -40,7 +50,6 @@ export function reportError(err: unknown, context?: string): void {
   ]
     .filter(Boolean)
     .join("\n");
-
   Alert.alert("디버그", body);
 }
 
