@@ -3,7 +3,7 @@ import { Platform, NativeModules } from "react-native";
 import { User } from "../types";
 import { api } from "../lib/api";
 import { API_URL } from "../lib/config";
-import { persistentGet, persistentSet, persistentDelete } from "../lib/storage";
+import { persistentGet, persistentDelete } from "../lib/storage";
 
 const { AlarmModule } = NativeModules;
 
@@ -49,17 +49,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // JWT 토큰 안전하게 저장
-        await persistentSet(TOKEN_KEY, data.token);
-
-        // 네이티브 알람에서 사용할 토큰 저장
-        if (Platform.OS === "android" && AlarmModule) {
-          try {
-            await AlarmModule.saveAuthToken(data.token);
-          } catch {}
-        }
-
-        // API 클라이언트에도 토큰 동기화
+        // 토큰 저장은 api.setToken 한 곳에서 전 레이어(SecureStore·SharedPreferences·파일)
+        // + 네이티브 알람 토큰까지 일괄 처리한다. (중복 저장 제거)
         await api.setToken(data.token);
 
         // 사용자 정보 설정

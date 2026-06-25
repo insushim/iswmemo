@@ -8,14 +8,8 @@ let lastShownAt = 0;
 const MIN_INTERVAL_MS = 800; // 동시 다발 에러 폭격 방지
 
 function shouldSkip(err: unknown): boolean {
-  const message = String((err as any)?.message || err || "");
-  const name = String((err as any)?.name || "");
-  if (name === "AbortError") return true;
-  if (/aborted|timed out|Network request failed/i.test(message)) {
-    // 네트워크 끊긴 일반 케이스는 빈도 높고 사용자도 인지함 → 굳이 안 띄움
-    return false; // ← 디버깅을 위해 띄우기로 변경
-  }
-  return false;
+  // AbortError(타임아웃/취소)만 noise로 보고 건너뛴다. 그 외는 모두 리포트.
+  return String((err as any)?.name || "") === "AbortError";
 }
 
 export function reportError(err: unknown, context?: string): void {

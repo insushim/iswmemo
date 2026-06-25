@@ -21,9 +21,7 @@ import java.util.List;
 
 public class ScreenUnlockService extends Service {
     private static final String CHANNEL_ID = "auto_launch_channel";
-    private static final String FULLSCREEN_CHANNEL_ID = "fullscreen_tasks";
     private static final int NOTIFICATION_ID = 2001;
-    private static final int FULLSCREEN_NOTIFICATION_ID = 3001;
     private static final long LAUNCH_DEBOUNCE_MS = 2500;
     // keyguard window 준비 기다림 + passive wake 감지 (너무 짧으면 isInteractive 체크가 false negative)
     private static final long SCREEN_ON_LAUNCH_DELAY_MS = 350;
@@ -34,14 +32,20 @@ public class ScreenUnlockService extends Service {
     private BroadcastReceiver screenReceiver;
     private Handler handler = new Handler(Looper.getMainLooper());
     private long lastLaunchTime = 0;
-    private long serviceStartTime = 0;
+    // 부팅/업데이트 직후 JS 콜드 init 중 launch 억제 종료 시각(0=가드 없음).
+    // 부팅(BootReceiver)에서 시작된 경우에만 onStartCommand에서 무장한다.
+    // process-death 후 START_STICKY/onTaskRemoved 재시작에는 무장하지 않아
+    // 그때 잠금화면 자동표시가 15초간 죽는 문제(S-3)를 막는다.
+    private long guardUntil = 0;
+    // 콜백 중복 누적 방지용 단일 Runnable. rapid on/off 시 stale 콜백을 제거한다.
+    private final Runnable launchRunnable = new Runnable() {
+        @Override public void run() { launchApp(getApplicationContext()); }
+    };
 
     @Override
     public void onCreate() {
         super.onCreate();
-        serviceStartTime = System.currentTimeMillis();
         createNotificationChannel();
-        createFullScreenChannel();
         try {
             if (Build.VERSION.SDK_INT >= 34) {
                 startForeground(NOTIFICATION_ID, buildNotification(),
@@ -66,21 +70,6 @@ public class ScreenUnlockService extends Service {
             channel.enableVibration(false);
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) manager.createNotificationChannel(channel);
-        }
-    }
-
-    private void createFullScreenChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                FULLSCREEN_CHANNEL_ID, "할일 표시", NotificationManager.IMPORTANCE_HIGH
-            );
-            channel.setDescription("화면 켤 때 할일 자동 표시");
-            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-            channel.setBypassDnd(true);
-            channel.enableVibration(false);
-            channel.setSound(null, null);
-            NotificationManager nm = getSystemService(NotificationManager.class);
-            if (nm != null) nm.createNotificationChannel(channel);
         }
     }
 
@@ -130,7 +119,7 @@ public class ScreenUnlockService extends Service {
             public void onReceive(Context context, Intent intent) {
                 String action = intent.getAction();
                 if (Intent.ACTION_SCREEN_ON.equals(action)) {
-                    // 잠금화면 위 자동 표시가 이 앱의 core UX. SCREEN_ON에서 바로 launch.
+                    // 잠금화면 위 자동 표시가 이 앱의 core UX. SCREEN_ON에서 launch 예약.
                     // CPU hot 유지로 keyguard 위 진입 버벅임 완화.
                     try {
                         PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
@@ -141,16 +130,26 @@ public class ScreenUnlockService extends Service {
                             wl.acquire(SCREEN_ON_WAKELOCK_MS);
                         }
                     } catch (Exception e) {}
-                    handler.postDelayed(() -> launchApp(context), SCREEN_ON_LAUNCH_DELAY_MS);
+                    // 이전 예약을 취소하고 다시 예약 → rapid on/off 시 콜백 누적·중복 launch 방지(S-2)
+                    handler.removeCallbacks(launchRunnable);
+                    handler.postDelayed(launchRunnable, SCREEN_ON_LAUNCH_DELAY_MS);
                 } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
-                    // 잠금해제 시점 보조 트리거 (SCREEN_ON 놓친 경우 대비, debounce가 중복 차단)
-                    handler.postDelayed(() -> launchApp(context), USER_PRESENT_LAUNCH_DELAY_MS);
+                    // 잠금해제 시점 보조 트리거. 기존 예약 취소 후 단일 예약.
+                    handler.removeCallbacks(launchRunnable);
+                    handler.postDelayed(launchRunnable, USER_PRESENT_LAUNCH_DELAY_MS);
+                } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                    // passive wake(알림/센서/도즈)로 화면이 잠깐 켜졌다 꺼지는 경우:
+                    // delay 안에 SCREEN_OFF가 도착하면 예약된 launch를 취소한다.
+                    // → "잠금 안 풀렸는데 떴다 사라짐 / 혼자 꺼짐"(S-1) 방지.
+                    // core UX인 SCREEN_ON 자동표시는 유지하되, 실제로 꺼지는 wake만 거른다.
+                    handler.removeCallbacks(launchRunnable);
                 }
             }
         };
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_SCREEN_ON);
         filter.addAction(Intent.ACTION_USER_PRESENT);
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(screenReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
@@ -181,9 +180,9 @@ public class ScreenUnlockService extends Service {
 
     private void launchApp(Context context) {
         long now = System.currentTimeMillis();
-        // 서비스 cold start 직후(업데이트 설치/부팅) auto-launch 억제
-        // JS 번들 cold init 중 MainActivity launch → "엄청난 깜빡임" 방지
-        if (serviceStartTime > 0 && now - serviceStartTime < SERVICE_COLD_START_GUARD_MS) return;
+        // 부팅/업데이트 직후 JS 번들 cold init 중 MainActivity launch → "엄청난 깜빡임" 방지.
+        // 단 boot 경로에서만 무장되므로(S-3), process-death 재시작 후엔 즉시 자동표시 가능.
+        if (guardUntil > 0 && now < guardUntil) return;
         // passive wake(알림/센서/도즈종료) 대응: delay 동안 화면이 이미 꺼져가는 중이면 abort.
         // 주의: isKeyguardLocked 체크는 하지 않음 — 잠금화면 위 자동 표시가 core UX
         try {
@@ -210,39 +209,14 @@ public class ScreenUnlockService extends Service {
         } catch (Exception e) { e.printStackTrace(); }
     }
 
-    private void showFullScreenNotification(Context context) {
-        try {
-            Intent launchIntent = new Intent(context, MainActivity.class);
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            launchIntent.putExtra("from_screen_on", true);
-            PendingIntent fullScreenIntent = PendingIntent.getActivity(context, 1, launchIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            PendingIntent contentIntent = PendingIntent.getActivity(context, 2, launchIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            Notification.Builder builder;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                builder = new Notification.Builder(context, FULLSCREEN_CHANNEL_ID);
-            } else {
-                builder = new Notification.Builder(context);
-            }
-            Notification notification = builder
-                .setContentTitle("또박또박 - 오늘의 할일")
-                .setContentText("탭하여 할일을 확인하세요")
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setFullScreenIntent(fullScreenIntent, true)
-                .setContentIntent(contentIntent)
-                .setAutoCancel(true)
-                .setVisibility(Notification.VISIBILITY_PUBLIC)
-                .setPriority(Notification.PRIORITY_HIGH)
-                .setCategory(Notification.CATEGORY_ALARM)
-                .build();
-            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm != null) {
-                nm.notify(FULLSCREEN_NOTIFICATION_ID, notification);
-                handler.postDelayed(() -> { try { nm.cancel(FULLSCREEN_NOTIFICATION_ID); } catch (Exception e) {} }, 3000);
-            }
-        } catch (Exception e) { e.printStackTrace(); }
+    @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        // 부팅/업데이트로 시작된 경우에만 cold-start 가드 무장 (BootReceiver가 extra 부착).
+        // START_STICKY/onTaskRemoved 재시작 intent엔 extra가 없어 무장되지 않음(S-3 해소).
+        if (intent != null && intent.getBooleanExtra("cold_start_guard", false)) {
+            guardUntil = System.currentTimeMillis() + SERVICE_COLD_START_GUARD_MS;
+        }
+        return START_STICKY;
     }
-
-    @Override public int onStartCommand(Intent intent, int flags, int startId) { return START_STICKY; }
     @Override public IBinder onBind(Intent intent) { return null; }
     @Override public void onDestroy() {
         if (screenReceiver != null) { try { unregisterReceiver(screenReceiver); } catch (Exception e) {} }

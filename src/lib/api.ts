@@ -207,11 +207,16 @@ class ApiClient {
         const msg =
           errBody?.error || `HTTP ${response.status} ${response.statusText || ""}`.trim();
 
-        // 401 → 토큰 만료/무효. 토큰 클리어 + 로그아웃 처리로
-        // Navigation root가 자동으로 LoginScreen으로 전환되게 한다.
+        // 401 → 토큰 만료/무효 가능. 단, 단발 일시 401(서버 콜드스타트/clock skew/
+        // 순간 5xx→401)과 진짜 만료를 구분한다. handleUnauthorized가 verify를 1회
+        // 재확인해 재차 401일 때만 로그아웃(loggedOut=true). 그 외엔 세션 유지.
         if (response.status === 401) {
-          await this.handleUnauthorized(msg);
-          throw new Error("세션이 만료되었습니다. 다시 로그인해주세요.");
+          const loggedOut = await this.handleUnauthorized(msg);
+          throw new Error(
+            loggedOut
+              ? "세션이 만료되었습니다. 다시 로그인해주세요."
+              : "일시적인 인증 오류입니다. 잠시 후 다시 시도해주세요.",
+          );
         }
 
         const err = new Error(msg);
@@ -236,11 +241,21 @@ class ApiClient {
   }
 
   private unauthorizedHandling = false;
-  private async handleUnauthorized(serverMsg: string): Promise<void> {
-    // 동시 다발 401 폭격 시 한 번만 처리
-    if (this.unauthorizedHandling) return;
+  // 401 수신 시 즉시 로그아웃하지 않고 verify로 1회 재확인한다.
+  // 재확인도 "명시적 401"일 때만 토큰 삭제 + 로그아웃(true 반환).
+  // 네트워크/5xx/일시 오류는 세션 유지(false) → 콜드스타트 blip 등에 의한
+  // "가끔 로그인 풀림" 방지. checkAuth의 "일시 오류엔 로그아웃 안 함" 정책과 통일.
+  // 반환: true=로그아웃됨, false=세션 유지.
+  private async handleUnauthorized(serverMsg: string): Promise<boolean> {
+    // 동시 다발 401 폭격 시 한 번만 처리 (나머지 호출은 세션 유지로 간주)
+    if (this.unauthorizedHandling) return false;
     this.unauthorizedHandling = true;
     try {
+      const confirmedInvalid = await this.confirmTokenInvalid();
+      if (!confirmedInvalid) {
+        // 토큰이 실제로는 유효하거나 판단 불가 → 일시 오류로 보고 세션 유지
+        return false;
+      }
       await this.clearToken();
       // circular dep 회피용 동적 require
       try {
@@ -251,11 +266,40 @@ class ApiClient {
         new Error(`세션 만료 (${serverMsg}). 로그인 화면으로 이동합니다.`),
         "AUTH",
       );
+      return true;
     } finally {
       // 다음 user action 때 다시 시도할 수 있게 약간의 쿨다운 후 해제
       setTimeout(() => {
         this.unauthorizedHandling = false;
       }, 2000);
+    }
+  }
+
+  // verify 엔드포인트로 토큰 유효성 재확인.
+  // 반환 true = 토큰이 확실히 무효(verify가 401) → 로그아웃해야 함.
+  // 반환 false = 유효하거나 판단 불가(네트워크/5xx/타임아웃) → 세션 유지(보수적).
+  private async confirmTokenInvalid(): Promise<boolean> {
+    const token = this.token;
+    if (!token) return true; // 토큰 자체가 없으면 이미 로그아웃 상태
+    // 짧은 지연 후 재확인 — 서버 콜드스타트/일시 5xx가 가라앉을 여유를 준다
+    await new Promise((r) => setTimeout(r, 1200));
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const resp = await fetch(`${API_URL}/api/auth/mobile/verify`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      // 명시적 401만 진짜 만료로 처리. 그 외(200/5xx 등)는 세션 유지.
+      return resp.status === 401;
+    } catch {
+      // 네트워크 오류 → 일시적일 수 있으니 세션 유지
+      return false;
     }
   }
 
