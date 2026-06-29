@@ -2,7 +2,7 @@
   "expo": {
     "name": "또박또박",
     "slug": "growthpad-mobile",
-    "version": "3.11.0",
+    "version": "3.12.0",
     "owner": "insushim",
     "orientation": "portrait",
     "updates": {
@@ -58,7 +58,12 @@
           "locationAlwaysAndWhenInUsePermission": "날씨와 미세먼지 정보를 보기 위해 위치 권한이 필요합니다."
         }
       ],
-      ["expo-notifications", { "color": "#6366f1" }],
+      [
+        "expo-notifications",
+        {
+          "color": "#6366f1"
+        }
+      ],
       "./plugins/withAutoLaunch"
     ],
     "extra": {

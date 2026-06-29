@@ -30,10 +30,17 @@ import {
   Palette,
   Calendar,
   FileText,
+  Lock,
 } from "lucide-react-native";
 import { useTheme, levelSystem } from "../lib/theme";
 import GoalBanner from "../components/GoalBanner";
 import { useAuthStore } from "../store/auth";
+import {
+  hasE2EEKey,
+  setE2EEPassphrase,
+  clearE2EEKey,
+} from "../lib/e2ee-store";
+import { TextInput } from "react-native";
 import {
   useSettingsStore,
   FontSizeOption,
@@ -82,6 +89,65 @@ export default function SettingsScreen() {
   const [showThemeColor, setShowThemeColor] = useState(false);
   const [showAlarmDuration, setShowAlarmDuration] = useState(false);
   const [overlayGranted, setOverlayGranted] = useState(false);
+  // E2EE(종단간 암호화)
+  const [e2eeOn, setE2eeOn] = useState(false);
+  const [showE2EE, setShowE2EE] = useState(false);
+  const [pass1, setPass1] = useState("");
+  const [pass2, setPass2] = useState("");
+  const [e2eeBusy, setE2eeBusy] = useState(false);
+
+  useEffect(() => {
+    hasE2EEKey().then(setE2eeOn).catch(() => {});
+  }, []);
+
+  const handleSetE2EE = async () => {
+    if (pass1.trim().length < 8) {
+      Alert.alert("암호 오류", "암호화 암호는 8자 이상이어야 합니다.");
+      return;
+    }
+    if (pass1 !== pass2) {
+      Alert.alert("암호 오류", "두 암호가 일치하지 않습니다.");
+      return;
+    }
+    if (!user?.email) {
+      Alert.alert("로그인 필요", "먼저 로그인하세요.");
+      return;
+    }
+    setE2eeBusy(true);
+    try {
+      await setE2EEPassphrase(pass1, user.email);
+      setE2eeOn(true);
+      setPass1("");
+      setPass2("");
+      setShowE2EE(false);
+      Alert.alert(
+        "암호화 설정됨",
+        "메모·할일·일정이 이 암호로 암호화됩니다.\n\nSchoolDesk(컴퓨터)·웹에서도 같은 암호를 입력하세요.\n\n⚠️ 암호를 잊으면 암호화된 데이터를 풀 수 없습니다. 종이에 적어 보관하세요.",
+      );
+    } catch (e) {
+      Alert.alert("실패", "암호화 설정에 실패했습니다.");
+    } finally {
+      setE2eeBusy(false);
+    }
+  };
+
+  const handleClearE2EE = () => {
+    Alert.alert(
+      "암호화 해제",
+      "해제하면 이후 저장하는 내용이 평문으로 서버에 올라갑니다.\n(이미 올라간 암호문은 그대로 남습니다)\n해제할까요?",
+      [
+        { text: "취소", style: "cancel" },
+        {
+          text: "해제",
+          style: "destructive",
+          onPress: async () => {
+            await clearE2EEKey();
+            setE2eeOn(false);
+          },
+        },
+      ],
+    );
+  };
 
   const checkPermissions = useCallback(async () => {
     if (Platform.OS !== "android" || !AutoLaunchModule) return;
@@ -421,6 +487,26 @@ export default function SettingsScreen() {
           />
         </View>
 
+        {/* 보안 */}
+        <View style={styles.section}>
+          <Text
+            style={[styles.sectionTitle, { color: colors.mutedForeground }]}
+          >
+            보안
+          </Text>
+          <SettingItem
+            icon={Lock}
+            iconColor="#ef4444"
+            title="데이터 암호화 (종단간)"
+            subtitle={
+              e2eeOn
+                ? "켜짐 — 메모·할일·일정이 암호화됨"
+                : "메모·할일·일정을 암호로 잠급니다"
+            }
+            onPress={() => (e2eeOn ? handleClearE2EE() : setShowE2EE(true))}
+          />
+        </View>
+
         {/* 지원 */}
         <View style={styles.section}>
           <Text
@@ -474,6 +560,88 @@ export default function SettingsScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      {/* E2EE 암호 설정 모달 */}
+      <Modal
+        visible={showE2EE}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowE2EE(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                데이터 암호화
+              </Text>
+              <TouchableOpacity onPress={() => setShowE2EE(false)}>
+                <X size={22} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ padding: 20, gap: 12 }}>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 19 }}>
+                로그인 비밀번호와 <Text style={{ fontWeight: "700" }}>다른</Text> 별도의
+                암호를 정하세요. 이 암호로 메모·할일·일정을 잠급니다. SchoolDesk(컴퓨터)·웹에서도
+                같은 암호를 입력해야 내용이 보입니다.
+              </Text>
+              <TextInput
+                placeholder="암호화 암호 (8자 이상)"
+                placeholderTextColor={colors.mutedForeground}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={pass1}
+                onChangeText={setPass1}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  color: colors.foreground,
+                  fontSize: 15,
+                }}
+              />
+              <TextInput
+                placeholder="암호 확인"
+                placeholderTextColor={colors.mutedForeground}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={pass2}
+                onChangeText={setPass2}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  color: colors.foreground,
+                  fontSize: 15,
+                }}
+              />
+              <Text style={{ color: "#f59e0b", fontSize: 12, lineHeight: 17 }}>
+                ⚠️ 암호를 잊으면 암호화된 데이터를 풀 수 없습니다. 종이에 적어 보관하세요.
+              </Text>
+              <TouchableOpacity
+                disabled={e2eeBusy}
+                onPress={handleSetE2EE}
+                style={{
+                  backgroundColor: colors.primary,
+                  borderRadius: 10,
+                  paddingVertical: 14,
+                  alignItems: "center",
+                  opacity: e2eeBusy ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
+                  {e2eeBusy ? "설정 중…" : "암호화 설정"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* 도움말 모달 */}
       <Modal
