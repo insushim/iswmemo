@@ -14,9 +14,30 @@ import type {
   GoalType,
   GoalStatus,
   RoutineType,
+  CalendarEvent,
 } from "../types";
 
 // --- Request payload types ---
+
+interface CreateEventPayload {
+  title: string;
+  description?: string | null;
+  location?: string | null;
+  startAt: string; // ISO
+  endAt: string; // ISO
+  isAllDay?: boolean;
+  color?: string;
+}
+
+interface UpdateEventPayload {
+  title?: string;
+  description?: string | null;
+  location?: string | null;
+  startAt?: string;
+  endAt?: string;
+  isAllDay?: boolean;
+  color?: string;
+}
 
 interface CreateTaskPayload {
   title: string;
@@ -467,6 +488,47 @@ class ApiClient {
     return this.fetch<RoutineLog>(`/api/routines/${routineId}/log`, {
       method: "POST",
       body: { itemIndex },
+    });
+  }
+
+  // --- Calendar Events (달력) ---
+
+  // 특정 월의 일정 (year=YYYY, month=1~12)
+  async getEventsByMonth(year: number, month: number): Promise<CalendarEvent[]> {
+    const res = await this.fetch<{ events: CalendarEvent[] }>(
+      `/api/events?year=${year}&month=${month}`,
+    );
+    return res?.events ?? [];
+  }
+
+  // 특정 날짜의 일정 (date=YYYY-MM-DD)
+  async getEventsByDate(date: string): Promise<CalendarEvent[]> {
+    const res = await this.fetch<{ events: CalendarEvent[] }>(
+      `/api/events?date=${date}`,
+    );
+    return res?.events ?? [];
+  }
+
+  async createEvent(data: CreateEventPayload): Promise<CalendarEvent> {
+    return this.fetch<CalendarEvent>("/api/events", {
+      method: "POST",
+      body: data as unknown as Record<string, unknown>,
+    });
+  }
+
+  async updateEvent(
+    id: string,
+    data: UpdateEventPayload,
+  ): Promise<CalendarEvent> {
+    return this.fetch<CalendarEvent>(`/api/events/${id}`, {
+      method: "PATCH",
+      body: data as unknown as Record<string, unknown>,
+    });
+  }
+
+  async deleteEvent(id: string): Promise<void> {
+    return this.fetch<void>(`/api/events/${id}`, {
+      method: "DELETE",
     });
   }
 }

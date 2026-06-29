@@ -25,6 +25,23 @@ export interface Task {
   updatedAt: string;
 }
 
+// 달력 일정 (백엔드 CalendarEvent)
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  startAt: string; // ISO
+  endAt: string; // ISO
+  isAllDay: boolean;
+  color: string;
+  isRecurring?: boolean;
+  recurrence?: string | null;
+  reminderSettings?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // 습관
 export interface Habit {
   id: string;

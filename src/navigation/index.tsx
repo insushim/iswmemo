@@ -5,6 +5,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import {
   ListTodo,
   Zap,
+  Calendar,
   CalendarDays,
   Target,
   StickyNote,
@@ -20,6 +21,7 @@ import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import SimpleHomeScreen from "../screens/SimpleHomeScreen";
 import HabitsScreen from "../screens/HabitsScreen";
+import CalendarScreen from "../screens/CalendarScreen";
 import ScheduleScreen from "../screens/ScheduleScreen";
 import GoalsScreen from "../screens/GoalsScreen";
 import NotesScreen from "../screens/NotesScreen";
@@ -90,6 +92,14 @@ function MainTabs() {
         options={{
           tabBarLabel: "습관",
           tabBarIcon: ({ color }) => <Zap size={19} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="Calendar"
+        component={CalendarScreen}
+        options={{
+          tabBarLabel: "달력",
+          tabBarIcon: ({ color }) => <Calendar size={19} color={color} />,
         }}
       />
       <Tab.Screen
