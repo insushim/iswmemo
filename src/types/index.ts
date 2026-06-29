@@ -35,6 +35,7 @@ export interface CalendarEvent {
   endAt: string; // ISO
   isAllDay: boolean;
   color: string;
+  category?: string | null;
   isRecurring?: boolean;
   recurrence?: string | null;
   reminderSettings?: string | null;

@@ -27,6 +27,10 @@ interface CreateEventPayload {
   endAt: string; // ISO
   isAllDay?: boolean;
   color?: string;
+  category?: string | null;
+  recurrence?: string | null;
+  isRecurring?: boolean;
+  reminderSettings?: string | null;
 }
 
 interface UpdateEventPayload {
@@ -37,6 +41,10 @@ interface UpdateEventPayload {
   endAt?: string;
   isAllDay?: boolean;
   color?: string;
+  category?: string | null;
+  recurrence?: string | null;
+  isRecurring?: boolean;
+  reminderSettings?: string | null;
 }
 
 interface CreateTaskPayload {

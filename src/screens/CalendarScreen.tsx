@@ -30,6 +30,9 @@ import {
   Bell,
   BellOff,
   Copy,
+  GraduationCap,
+  Repeat,
+  CalendarDays,
 } from "lucide-react-native";
 import * as Clipboard from "expo-clipboard";
 import {
@@ -51,7 +54,7 @@ import { ko } from "date-fns/locale";
 import * as SecureStore from "expo-secure-store";
 import { useTheme } from "../lib/theme";
 import { api } from "../lib/api";
-import { Routine, Task } from "../types";
+import { Routine, Task, CalendarEvent } from "../types";
 import { useSettingsStore } from "../store/settings";
 import { scheduleTaskAlarm, cancelTaskAlarm } from "../lib/taskAlarm";
 import VoiceInput from "../components/VoiceInput";
@@ -64,6 +67,32 @@ import DraggableFlatList, {
 const SCHEDULE_CACHE_KEY = "cached_schedules_v1";
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const TASK_COLOR = "#f59e0b"; // 기한 할일 = 주황 (ScheduleScreen 컨벤션과 통일)
+const SCHOOL_COLOR = "#8b5cf6"; // 학교일정(events, school-desk 연동) = 보라
+
+// 학교일정 카테고리(school-desk schedules.category 와 동일 집합)
+const EVENT_CATEGORIES = [
+  "일반",
+  "학교행사",
+  "수업",
+  "회의",
+  "출장",
+  "연수",
+  "개인",
+] as const;
+// 반복(school-desk recurrence 와 동일 값)
+const RECURRENCE_OPTIONS: { label: string; value: string | null }[] = [
+  { label: "없음", value: null },
+  { label: "매일", value: "daily" },
+  { label: "매주", value: "weekly" },
+  { label: "매월", value: "monthly" },
+  { label: "매년", value: "yearly" },
+];
+const RECURRENCE_LABEL: Record<string, string> = {
+  daily: "매일",
+  weekly: "매주",
+  monthly: "매월",
+  yearly: "매년",
+};
 
 interface ScheduleMeta {
   date: string; // YYYY-MM-DD
@@ -101,12 +130,23 @@ export default function CalendarScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [schedules, setSchedules] = useState<Routine[]>([]);
   const [deadlineTasks, setDeadlineTasks] = useState<Task[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]); // 학교일정(events)
   const [viewMonth, setViewMonth] = useState<Date>(startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const viewMonthRef = useRef(viewMonth);
+  useEffect(() => {
+    viewMonthRef.current = viewMonth;
+  }, [viewMonth]);
 
   // 추가/수정 모달
   const [showModal, setShowModal] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Routine | null>(null);
+  // 학교일정(events) 모달 상태
+  const [entryType, setEntryType] = useState<"personal" | "school">("personal");
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [eventCategory, setEventCategory] = useState<string>("일반");
+  const [eventAllDay, setEventAllDay] = useState(false);
+  const [eventRecurrence, setEventRecurrence] = useState<string | null>(null);
   const [eventName, setEventName] = useState("");
   const [eventPlace, setEventPlace] = useState("");
   const [eventDate, setEventDate] = useState(new Date());
@@ -175,6 +215,25 @@ export default function CalendarScreen() {
     } catch {}
   };
 
+  // 학교일정(events) — 보고 있는 달(또는 명시한 달) 기준 조회(school-desk 연동분 포함).
+  // month 인자: 다른 달로 저장 직후 setViewMonth 가 반영되기 전(viewMonthRef 미갱신) race 방지용.
+  const fetchEvents = async (month?: Date) => {
+    const vm = month ?? viewMonthRef.current;
+    try {
+      const evs = await api.getEventsByMonth(
+        vm.getFullYear(),
+        vm.getMonth() + 1,
+      );
+      setEvents(Array.isArray(evs) ? evs : []);
+    } catch {}
+  };
+
+  // 달 이동 시 해당 월 학교일정 재조회
+  useEffect(() => {
+    fetchEvents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMonth]);
+
   useFocusEffect(
     useCallback(() => {
       if (!hasLoadedRef.current) {
@@ -182,6 +241,7 @@ export default function CalendarScreen() {
         fetchSchedules();
       }
       fetchTasks();
+      fetchEvents();
     }, []),
   );
 
@@ -212,6 +272,7 @@ export default function CalendarScreen() {
         processPendingScheduleDelete().then(() => {
           fetchSchedules();
           fetchTasks();
+          fetchEvents();
         });
       }
       appStateRef.current = nextState;
@@ -221,7 +282,7 @@ export default function CalendarScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchSchedules(), fetchTasks()]);
+    await Promise.all([fetchSchedules(), fetchTasks(), fetchEvents()]);
     setRefreshing(false);
   };
 
@@ -248,14 +309,36 @@ export default function CalendarScreen() {
     [deadlineTasks],
   );
 
+  // 학교일정: startAt~endAt(로컬 날짜) 범위에 해당 날짜가 들어오면 표시(멀티데이 포함)
+  const eventsForDay = useCallback(
+    (day: Date): CalendarEvent[] => {
+      const key = dayKey(day);
+      return events
+        .filter((e) => {
+          if (!e.startAt) return false;
+          const s = format(parseISO(e.startAt), "yyyy-MM-dd");
+          const en = e.endAt ? format(parseISO(e.endAt), "yyyy-MM-dd") : s;
+          return key >= s && key <= en;
+        })
+        .sort((a, b) => (a.startAt || "").localeCompare(b.startAt || ""));
+    },
+    [events],
+  );
+
   const todaySchedules = schedulesForDay(selectedDate);
   const todayDeadlineTasks = tasksForDay(selectedDate);
+  const todayEvents = eventsForDay(selectedDate);
   const allDisplayed = [...todaySchedules];
 
   const weeks = useMemo(() => monthWeeks(viewMonth), [viewMonth]);
 
   const openAddModal = () => {
     setEditingSchedule(null);
+    setEditingEvent(null);
+    setEntryType("personal");
+    setEventCategory("일반");
+    setEventAllDay(false);
+    setEventRecurrence(null);
     setEventName("");
     setEventPlace("");
     setEventDate(selectedDate);
@@ -271,6 +354,8 @@ export default function CalendarScreen() {
 
   const openEditModal = (schedule: Routine) => {
     setEditingSchedule(schedule);
+    setEditingEvent(null);
+    setEntryType("personal");
     setEventName(schedule.name);
     const meta = parseScheduleMeta(schedule.description);
     setEventPlace(meta?.place || "");
@@ -286,6 +371,79 @@ export default function CalendarScreen() {
       setEventIsAM(am);
     }
     setShowModal(true);
+  };
+
+  // 학교일정(event) 수정 모달
+  const openEditEventModal = (ev: CalendarEvent) => {
+    setEditingSchedule(null);
+    setEditingEvent(ev);
+    setEntryType("school");
+    setEventName(ev.title);
+    setEventPlace(ev.location || "");
+    setEventCategory(ev.category || "일반");
+    setEventAllDay(!!ev.isAllDay);
+    setEventRecurrence(ev.recurrence || null);
+    const sd = ev.startAt ? parseISO(ev.startAt) : new Date();
+    setEventDate(sd);
+    setEventCalendarMonth(sd);
+    const { hour, am } = from24Hour(sd.getHours());
+    setEventHour(hour);
+    setEventMinute(sd.getMinutes());
+    setEventIsAM(am);
+    setShowModal(true);
+  };
+
+  // 학교일정(event) 생성/수정 — startAt/endAt ISO 변환은 school-desk 규약과 동일
+  // (시간일정=로컬→UTC, 종일=날짜기반 UTC자정 고정으로 TZ 불변)
+  const submitEvent = async (dateStr: string, startTime: string) => {
+    const allDay = eventAllDay;
+    const baseStart = new Date(`${dateStr}T${startTime}:00`);
+    const startAt = allDay
+      ? `${dateStr}T00:00:00.000Z`
+      : baseStart.toISOString();
+    const endAt = allDay
+      ? `${dateStr}T00:00:00.000Z`
+      : new Date(baseStart.getTime() + 60 * 60 * 1000).toISOString();
+    const recurrence = eventRecurrence;
+    const reminderSettings =
+      editingEvent?.reminderSettings ||
+      JSON.stringify({
+        reminderMinutes: 10,
+        recurrenceEnd: null,
+        isCompleted: 0,
+      });
+    const payload = {
+      title: eventName.trim(),
+      location: eventPlace.trim() || null,
+      startAt,
+      endAt,
+      isAllDay: allDay,
+      color: editingEvent?.color || SCHOOL_COLOR,
+      category: eventCategory,
+      recurrence,
+      isRecurring: !!recurrence,
+      reminderSettings,
+    };
+    const editing = editingEvent;
+    setShowModal(false);
+    setSelectedDate(parseISO(dateStr));
+    if (!isSameMonth(parseISO(dateStr), viewMonth)) {
+      setViewMonth(startOfMonth(parseISO(dateStr)));
+    }
+    const targetMonth = parseISO(dateStr);
+    try {
+      if (editing) {
+        await api.updateEvent(editing.id, payload);
+      } else {
+        await api.createEvent(payload as any);
+      }
+      await fetchEvents(targetMonth);
+    } catch {
+      Alert.alert("오류", "학교일정 저장에 실패했습니다");
+      fetchEvents(targetMonth);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -314,6 +472,13 @@ export default function CalendarScreen() {
     const hour24 = to24Hour(finalHour, eventIsAM);
     const startTime = `${String(hour24).padStart(2, "0")}:${String(finalMinute).padStart(2, "0")}`;
     const dateStr = format(eventDate, "yyyy-MM-dd");
+
+    // 학교일정이면 events 경로로 분기(개인일정 routine 로직은 아래 그대로)
+    if (entryType === "school") {
+      await submitEvent(dateStr, startTime);
+      return;
+    }
+
     const meta: ScheduleMeta = {
       date: dateStr,
       place: eventPlace.trim() || undefined,
@@ -410,6 +575,30 @@ export default function CalendarScreen() {
             await api.deleteRoutine(schedule.id);
           } catch {
             setSchedules(prev);
+            Alert.alert("오류", "삭제에 실패했습니다");
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleDeleteEvent = (ev: CalendarEvent) => {
+    Alert.alert("삭제", `"${ev.title}" 학교일정을 삭제할까요?`, [
+      {
+        text: "취소",
+        style: "cancel",
+        onPress: () => swipeableRefs.current.get(`event-${ev.id}`)?.close(),
+      },
+      {
+        text: "삭제",
+        style: "destructive",
+        onPress: async () => {
+          const prev = [...events];
+          setEvents((e) => e.filter((x) => x.id !== ev.id));
+          try {
+            await api.deleteEvent(ev.id);
+          } catch {
+            setEvents(prev);
             Alert.alert("오류", "삭제에 실패했습니다");
           }
         },
@@ -612,6 +801,144 @@ export default function CalendarScreen() {
     );
   };
 
+  // 학교일정(event) 카드
+  const renderEventCard = (ev: CalendarEvent) => {
+    const start = ev.startAt ? parseISO(ev.startAt) : null;
+    const timeLabel = ev.isAllDay
+      ? "종일"
+      : start
+        ? formatTime12(format(start, "HH:mm"))
+        : "";
+    const recur = ev.recurrence ? RECURRENCE_LABEL[ev.recurrence] : null;
+    const cat = ev.category || "일반";
+    return (
+      <Swipeable
+        key={`event-${ev.id}`}
+        ref={(ref) => {
+          if (ref) swipeableRefs.current.set(`event-${ev.id}`, ref);
+        }}
+        renderRightActions={(
+          _p: Animated.AnimatedInterpolation<number>,
+          dragX: Animated.AnimatedInterpolation<number>,
+        ) => {
+          const scale = dragX.interpolate({
+            inputRange: [-80, 0],
+            outputRange: [1, 0.5],
+            extrapolate: "clamp",
+          });
+          return (
+            <Animated.View
+              style={[styles.swipeDelete, { transform: [{ scale }] }]}
+            >
+              <TouchableOpacity
+                style={styles.swipeDeleteBtn}
+                onPress={() => handleDeleteEvent(ev)}
+              >
+                <Trash2 size={20} color="#fff" />
+                <Text style={styles.swipeDeleteText}>삭제</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          );
+        }}
+        overshootRight={false}
+        rightThreshold={40}
+        friction={2}
+      >
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={[
+            styles.scheduleCard,
+            {
+              backgroundColor: colors.card,
+              padding: cardPadding,
+              borderLeftColor: SCHOOL_COLOR,
+              borderLeftWidth: 3,
+            },
+          ]}
+          onPress={() => openEditEventModal(ev)}
+        >
+          <View style={styles.scheduleCenter}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                flexWrap: "wrap",
+              }}
+            >
+              <View
+                style={[styles.catBadge, { backgroundColor: SCHOOL_COLOR + "22" }]}
+              >
+                <Text style={[styles.catBadgeText, { color: SCHOOL_COLOR }]}>
+                  {cat}
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.scheduleName,
+                  { color: colors.foreground, fontSize: scaledFont(14) },
+                ]}
+                numberOfLines={2}
+              >
+                {ev.title}
+              </Text>
+            </View>
+            {(ev.location || recur) && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  marginTop: 2,
+                }}
+              >
+                {ev.location ? (
+                  <View style={styles.placeRow}>
+                    <MapPin size={11} color={colors.mutedForeground} />
+                    <Text
+                      style={[
+                        styles.placeText,
+                        {
+                          color: colors.mutedForeground,
+                          fontSize: scaledFont(11),
+                        },
+                      ]}
+                    >
+                      {ev.location}
+                    </Text>
+                  </View>
+                ) : null}
+                {recur ? (
+                  <View style={styles.placeRow}>
+                    <Repeat size={11} color={SCHOOL_COLOR} />
+                    <Text
+                      style={[
+                        styles.placeText,
+                        { color: SCHOOL_COLOR, fontSize: scaledFont(11) },
+                      ]}
+                    >
+                      {recur}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
+          </View>
+          <View style={styles.scheduleRight}>
+            <Text
+              style={[
+                styles.timeText,
+                { color: SCHOOL_COLOR, fontSize: scaledFont(12) },
+              ]}
+            >
+              {timeLabel}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </Swipeable>
+    );
+  };
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
@@ -679,6 +1006,7 @@ export default function CalendarScreen() {
               const dow = day.getDay();
               const hasSchedule = schedulesForDay(day).length > 0;
               const hasTask = tasksForDay(day).length > 0;
+              const hasEvent = eventsForDay(day).length > 0;
               return (
                 <TouchableOpacity
                   key={day.toISOString()}
@@ -723,6 +1051,11 @@ export default function CalendarScreen() {
                     {hasSchedule && (
                       <View
                         style={[styles.dot, { backgroundColor: colors.primary }]}
+                      />
+                    )}
+                    {hasEvent && (
+                      <View
+                        style={[styles.dot, { backgroundColor: SCHOOL_COLOR }]}
                       />
                     )}
                     {hasTask && (
@@ -792,13 +1125,58 @@ export default function CalendarScreen() {
           refreshing={refreshing}
           onRefresh={onRefresh}
           contentContainerStyle={styles.list}
+          ListHeaderComponent={
+            todayEvents.length > 0 ? (
+              <View style={{ marginBottom: 4 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    paddingHorizontal: 4,
+                    marginBottom: 6,
+                  }}
+                >
+                  <GraduationCap size={12} color={SCHOOL_COLOR} />
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: "600",
+                      color: SCHOOL_COLOR,
+                    }}
+                  >
+                    학교일정
+                  </Text>
+                </View>
+                {todayEvents.map((ev) => renderEventCard(ev))}
+                {todaySchedules.length > 0 && (
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: "600",
+                      color: colors.mutedForeground,
+                      paddingHorizontal: 4,
+                      marginTop: 8,
+                      marginBottom: 6,
+                    }}
+                  >
+                    개인일정
+                  </Text>
+                )}
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
-            <View style={[styles.empty, { backgroundColor: colors.card }]}>
-              <Clock size={32} color={colors.mutedForeground} />
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                이 날 일정이 없습니다
-              </Text>
-            </View>
+            todayEvents.length === 0 ? (
+              <View style={[styles.empty, { backgroundColor: colors.card }]}>
+                <Clock size={32} color={colors.mutedForeground} />
+                <Text
+                  style={[styles.emptyText, { color: colors.mutedForeground }]}
+                >
+                  이 날 일정이 없습니다
+                </Text>
+              </View>
+            ) : null
           }
           ListFooterComponent={
             <>
@@ -975,7 +1353,13 @@ export default function CalendarScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-                {editingSchedule ? "일정 수정" : "새 일정"}
+                {editingEvent
+                  ? "학교일정 수정"
+                  : editingSchedule
+                    ? "일정 수정"
+                    : entryType === "school"
+                      ? "새 학교일정"
+                      : "새 일정"}
               </Text>
               <TouchableOpacity onPress={() => setShowModal(false)}>
                 <X size={22} color={colors.mutedForeground} />
@@ -983,6 +1367,57 @@ export default function CalendarScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 480 }}>
+              {/* 일정 종류 토글(추가 시에만) */}
+              {!editingSchedule && !editingEvent && (
+                <View style={styles.typeToggleRow}>
+                  {(
+                    [
+                      { key: "personal", label: "개인일정", color: colors.primary },
+                      { key: "school", label: "학교일정", color: SCHOOL_COLOR },
+                    ] as const
+                  ).map((opt) => {
+                    const active = entryType === opt.key;
+                    return (
+                      <TouchableOpacity
+                        key={opt.key}
+                        style={[
+                          styles.typeToggleBtn,
+                          {
+                            backgroundColor: active
+                              ? opt.color + "18"
+                              : colors.background,
+                            borderColor: active ? opt.color : colors.border,
+                          },
+                        ]}
+                        onPress={() => setEntryType(opt.key)}
+                      >
+                        {opt.key === "school" ? (
+                          <GraduationCap
+                            size={15}
+                            color={active ? opt.color : colors.mutedForeground}
+                          />
+                        ) : (
+                          <CalendarDays
+                            size={15}
+                            color={active ? opt.color : colors.mutedForeground}
+                          />
+                        )}
+                        <Text
+                          style={[
+                            styles.typeToggleText,
+                            {
+                              color: active ? opt.color : colors.mutedForeground,
+                            },
+                          ]}
+                        >
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
               {/* 일정 이름 */}
               <View
                 style={{
@@ -1044,6 +1479,43 @@ export default function CalendarScreen() {
                   onChangeText={setEventPlace}
                 />
               </View>
+
+              {/* 카테고리(학교일정 전용) */}
+              {entryType === "school" && (
+                <>
+                  <Text style={[styles.label, { color: colors.foreground }]}>
+                    카테고리
+                  </Text>
+                  <View style={styles.chipRow}>
+                    {EVENT_CATEGORIES.map((c) => {
+                      const active = eventCategory === c;
+                      return (
+                        <TouchableOpacity
+                          key={c}
+                          style={[
+                            styles.chip,
+                            { borderColor: colors.border },
+                            active && {
+                              backgroundColor: SCHOOL_COLOR,
+                              borderColor: SCHOOL_COLOR,
+                            },
+                          ]}
+                          onPress={() => setEventCategory(c)}
+                        >
+                          <Text
+                            style={[
+                              styles.chipText,
+                              { color: active ? "#fff" : colors.foreground },
+                            ]}
+                          >
+                            {c}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
 
               {/* 날짜 선택 (모달 내 미니 달력 — 주 단위 행) */}
               <Text style={[styles.label, { color: colors.foreground }]}>날짜</Text>
@@ -1139,7 +1611,43 @@ export default function CalendarScreen() {
                 ))}
               </View>
 
-              {/* 시간 휠 */}
+              {/* 종일 토글(학교일정 전용) */}
+              {entryType === "school" && (
+                <TouchableOpacity
+                  style={[
+                    styles.notifyToggle,
+                    {
+                      borderColor: eventAllDay ? SCHOOL_COLOR : colors.border,
+                      backgroundColor: eventAllDay
+                        ? SCHOOL_COLOR + "15"
+                        : colors.secondary,
+                      marginTop: 4,
+                    },
+                  ]}
+                  onPress={() => setEventAllDay(!eventAllDay)}
+                >
+                  <CalendarDays
+                    size={16}
+                    color={eventAllDay ? SCHOOL_COLOR : colors.mutedForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.notifyText,
+                      {
+                        color: eventAllDay
+                          ? SCHOOL_COLOR
+                          : colors.mutedForeground,
+                      },
+                    ]}
+                  >
+                    {eventAllDay ? "종일" : "시간 지정"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {/* 시간 휠 (종일이면 숨김) */}
+              {!(entryType === "school" && eventAllDay) && (
+                <>
               <Text style={[styles.label, { color: colors.foreground, marginTop: 12 }]}>
                 시간
               </Text>
@@ -1331,8 +1839,53 @@ export default function CalendarScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+                </>
+              )}
 
-              {/* 알림 토글 */}
+              {/* 반복(학교일정 전용) */}
+              {entryType === "school" && (
+                <>
+                  <Text
+                    style={[
+                      styles.label,
+                      { color: colors.foreground, marginTop: 12 },
+                    ]}
+                  >
+                    반복
+                  </Text>
+                  <View style={styles.chipRow}>
+                    {RECURRENCE_OPTIONS.map((opt) => {
+                      const active = eventRecurrence === opt.value;
+                      return (
+                        <TouchableOpacity
+                          key={opt.label}
+                          style={[
+                            styles.chip,
+                            { borderColor: colors.border },
+                            active && {
+                              backgroundColor: SCHOOL_COLOR,
+                              borderColor: SCHOOL_COLOR,
+                            },
+                          ]}
+                          onPress={() => setEventRecurrence(opt.value)}
+                        >
+                          <Text
+                            style={[
+                              styles.chipText,
+                              { color: active ? "#fff" : colors.foreground },
+                            ]}
+                          >
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
+
+              {/* 알림 토글(개인일정 전용) */}
+              {entryType === "personal" && (
               <TouchableOpacity
                 style={[
                   styles.notifyToggle,
@@ -1361,10 +1914,11 @@ export default function CalendarScreen() {
                   {eventNotify ? "시간에 알림 받기" : "알림 없음"}
                 </Text>
               </TouchableOpacity>
+              )}
             </ScrollView>
 
             <View style={{ flexDirection: "row", gap: 8 }}>
-              {!editingSchedule && (
+              {!editingSchedule && !editingEvent && (
                 <TouchableOpacity
                   style={[
                     styles.submitBtn,
@@ -1381,6 +1935,7 @@ export default function CalendarScreen() {
                     await handleSubmit();
                     setTimeout(() => {
                       setEditingSchedule(null);
+                      setEditingEvent(null);
                       setEventName("");
                       setEventPlace("");
                       setShowModal(true);
@@ -1407,7 +1962,11 @@ export default function CalendarScreen() {
                 disabled={isSubmitting}
               >
                 <Text style={styles.submitText}>
-                  {isSubmitting ? "저장 중..." : editingSchedule ? "수정" : "추가"}
+                  {isSubmitting
+                    ? "저장 중..."
+                    : editingSchedule || editingEvent
+                      ? "수정"
+                      : "추가"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1589,6 +2148,32 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   notifyText: { fontSize: 14, fontWeight: "500" },
+  typeToggleRow: { flexDirection: "row", gap: 8, marginBottom: 14 },
+  typeToggleBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+  },
+  typeToggleText: { fontSize: 14, fontWeight: "600" },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  chipText: { fontSize: 13, fontWeight: "500" },
+  catBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  catBadgeText: { fontSize: 10, fontWeight: "700" },
   submitBtn: { padding: 14, borderRadius: 10, alignItems: "center", marginTop: 4 },
   submitText: { color: "#fff", fontSize: 15, fontWeight: "600" },
 });
