@@ -165,23 +165,25 @@ function firstLine(s: string, n = 50): string {
   return (s.split("\n")[0] || "").slice(0, n);
 }
 
-/** note 복호화. 키 없거나 평문이면 원본 유지, 복호 실패면 자물쇠 표시. */
+// ⚠️ 데이터 안전: 복호 불가(키없음/실패)면 객체를 **그대로** 반환(암호문 보존).
+// 빈 값으로 바꾸면 사용자가 그 상태로 저장 시 서버 암호문을 파괴하므로 절대 비우지 않는다.
+// 서버 title 은 이미 '🔒 메모/할일/일정' placeholder 라 그대로도 자물쇠로 보인다.
+
+/** note 복호화. 평문/복호불가는 원본 유지. */
 function decryptNote(n: Note, key: Uint8Array | null): Note {
-  if (!isEncrypted(n.content)) return n; // 평문 레거시
-  if (!key) return { ...n, title: `${LOCK} 암호화됨`, content: "" };
+  if (!key || !isEncrypted(n.content)) return n;
   try {
     const obj = JSON.parse(decrypt(n.content, key));
     const content = typeof obj?.c === "string" ? obj.c : "";
     return { ...n, content, title: firstLine(content) || n.title };
   } catch {
-    return { ...n, title: `${LOCK} 암호화됨`, content: "" };
+    return n; // 암호문 보존
   }
 }
 
 /** task 복호화(SchoolDesk가 description 에 {t,d} 암호화). */
 function decryptTask(t: Task, key: Uint8Array | null): Task {
-  if (!isEncrypted(t.description)) return t;
-  if (!key) return { ...t, title: `${LOCK} 암호화됨`, description: "" };
+  if (!key || !isEncrypted(t.description)) return t;
   try {
     const obj = JSON.parse(decrypt(t.description as string, key));
     return {
@@ -190,14 +192,13 @@ function decryptTask(t: Task, key: Uint8Array | null): Task {
       description: typeof obj?.d === "string" ? obj.d : "",
     };
   } catch {
-    return { ...t, title: `${LOCK} 암호화됨`, description: "" };
+    return t; // 암호문 보존
   }
 }
 
 /** event 복호화(SchoolDesk가 description 에 {t,d,l} 암호화). */
 function decryptEvent(e: CalendarEvent, key: Uint8Array | null): CalendarEvent {
-  if (!isEncrypted(e.description)) return e;
-  if (!key) return { ...e, title: `${LOCK} 암호화됨`, description: "", location: "" };
+  if (!key || !isEncrypted(e.description)) return e;
   try {
     const obj = JSON.parse(decrypt(e.description as string, key));
     return {
@@ -207,7 +208,7 @@ function decryptEvent(e: CalendarEvent, key: Uint8Array | null): CalendarEvent {
       location: typeof obj?.l === "string" ? obj.l : "",
     };
   } catch {
-    return { ...e, title: `${LOCK} 암호화됨`, description: "", location: "" };
+    return e; // 암호문 보존
   }
 }
 

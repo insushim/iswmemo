@@ -414,6 +414,9 @@ export default function CalendarScreen() {
       });
     const payload = {
       title: eventName.trim(),
+      // E2EE: 제목·설명·장소가 한 묶음으로 암호화되므로 수정 시 기존 설명을 함께 보내야
+      // 서버 설명이 빈값으로 덮이지 않는다(editingEvent 는 복호된 메모리 값, 신규면 빈값).
+      description: editingEvent?.description ?? "",
       location: eventPlace.trim() || null,
       startAt,
       endAt,

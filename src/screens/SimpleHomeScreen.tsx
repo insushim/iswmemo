@@ -294,6 +294,9 @@ export default function SimpleHomeScreen() {
     }
     const isEditing = !!editingTask;
     const editId = editingTask?.id;
+    // E2EE: 제목·설명이 한 묶음으로 암호화되므로 편집 시 기존 설명을 함께 보내야
+    // 서버 설명이 빈값으로 덮이지 않는다(editingTask 는 복호된 메모리 값).
+    const editExistingDesc = editingTask?.description ?? "";
 
     // 즉시 UI 업데이트 (Optimistic Update)
     setShowAddModal(false);
@@ -320,6 +323,7 @@ export default function SimpleHomeScreen() {
     // 백그라운드 API 호출
     try {
       if (isEditing && editId) {
+        if (td.description === undefined) td.description = editExistingDesc;
         await api.updateTask(editId, td);
         // 알람은 별도 try/catch (실패해도 할일은 이미 저장됨)
         try {

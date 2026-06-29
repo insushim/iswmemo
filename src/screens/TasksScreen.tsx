@@ -210,6 +210,9 @@ export default function TasksScreen() {
     if (!editingTask || !newTaskTitle.trim()) return;
     const title = newTaskTitle.trim();
     const editId = editingTask.id;
+    // E2EE: 제목·설명이 한 묶음으로 암호화되므로 제목만 바꿔도 기존 설명을 함께 보내야
+    // 서버 설명이 빈값으로 덮이지 않는다. editingTask 는 복호된 메모리 값.
+    const existingDesc = editingTask.description ?? "";
     setTasks((prev) =>
       prev.map((t) =>
         t.id === editId ? { ...t, title, priority: newTaskPriority } : t,
@@ -219,7 +222,7 @@ export default function TasksScreen() {
     setShowModal(false);
     setNewTaskTitle("");
     try {
-      await api.updateTask(editId, { title, priority: newTaskPriority });
+      await api.updateTask(editId, { title, description: existingDesc, priority: newTaskPriority });
     } catch (error) {
       Alert.alert("오류", "수정에 실패했습니다");
       fetchTasks();
