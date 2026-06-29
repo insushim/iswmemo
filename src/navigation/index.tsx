@@ -6,7 +6,6 @@ import {
   ListTodo,
   Zap,
   Calendar,
-  CalendarDays,
   Target,
   StickyNote,
   Settings,
@@ -22,7 +21,6 @@ import RegisterScreen from "../screens/RegisterScreen";
 import SimpleHomeScreen from "../screens/SimpleHomeScreen";
 import HabitsScreen from "../screens/HabitsScreen";
 import CalendarScreen from "../screens/CalendarScreen";
-import ScheduleScreen from "../screens/ScheduleScreen";
 import GoalsScreen from "../screens/GoalsScreen";
 import NotesScreen from "../screens/NotesScreen";
 import SettingsScreen from "../screens/SettingsScreen";
@@ -100,14 +98,6 @@ function MainTabs() {
         options={{
           tabBarLabel: "달력",
           tabBarIcon: ({ color }) => <Calendar size={19} color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="Schedule"
-        component={ScheduleScreen}
-        options={{
-          tabBarLabel: "일정",
-          tabBarIcon: ({ color }) => <CalendarDays size={19} color={color} />,
         }}
       />
       <Tab.Screen
