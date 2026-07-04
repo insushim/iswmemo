@@ -235,6 +235,17 @@ public class ScreenUnlockService extends Service {
             e.printStackTrace();
         }
         registerScreenReceiver();
+        // 최근 앱 업데이트 설치 직후면 cold-start 가드 무장. 업데이트는 프로세스를 kill하므로
+        // onStartCommand의 extra 경로로는 무장 못 한다 → AlarmModule이 설치 직전 기록한
+        // SharedPreferences 시각을 보고 여기서 무장한다(업데이트 직후 "떴다 꺼짐" 방지).
+        try {
+            long lastUpdate = getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE)
+                .getLong("last_update_at", 0);
+            if (lastUpdate > 0 && System.currentTimeMillis() - lastUpdate < SERVICE_COLD_START_GUARD_MS) {
+                guardUntil = System.currentTimeMillis() + SERVICE_COLD_START_GUARD_MS;
+                android.util.Log.d(TAG, "cold guard armed: recent app update install");
+            }
+        } catch (Exception e) {}
     }
 
     private void createNotificationChannel() {
@@ -712,6 +723,12 @@ public class AlarmModule extends ReactContextBaseJavaModule {
                     context.getPackageName() + ".FileSystemFileProvider",
                     apkFile
                 );
+
+                // 업데이트 설치 직전 시각 기록 — 설치로 프로세스가 kill된 뒤 서비스가 START_STICKY로
+                // 재시작될 때 ScreenUnlockService.onCreate가 이 값을 보고 cold-start 가드를 무장한다.
+                // (BootReceiver 경로만 커버하던 guard의 사각지대 = 업데이트 직후 auto-launch가
+                //  cold-init 중 MainActivity를 흔들어 "떴다 꺼짐" 나던 문제 방지.)
+                getPrefs().edit().putLong("last_update_at", System.currentTimeMillis()).apply();
 
                 Intent installIntent = new Intent(Intent.ACTION_VIEW);
                 installIntent.setDataAndType(apkUri, "application/vnd.android.package-archive");

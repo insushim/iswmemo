@@ -1,13 +1,15 @@
 import { Alert, Linking, Platform } from 'react-native';
 import * as Device from 'expo-device';
-import * as SecureStore from 'expo-secure-store';
+import { persistentGet, persistentSet } from './storage';
 
 const AUTOSTART_KEY = 'autostart_prompted_v1';
 
 export async function promptAutoStart() {
   if (Platform.OS !== 'android') return;
 
-  const prompted = await SecureStore.getItemAsync(AUTOSTART_KEY);
+  // SecureStore 직접 사용 시 일부 기기의 cold-start null 반환 버그로 플래그가 유실돼
+  // 매 실행/업데이트마다 안내가 반복됐다 → SharedPreferences 우선 3중 저장소로 전환.
+  const prompted = await persistentGet(AUTOSTART_KEY);
   if (prompted) return;
 
   const brand = (Device.brand || '').toLowerCase();
@@ -35,5 +37,5 @@ export async function promptAutoStart() {
     ]
   );
 
-  await SecureStore.setItemAsync(AUTOSTART_KEY, 'true');
+  await persistentSet(AUTOSTART_KEY, 'true');
 }

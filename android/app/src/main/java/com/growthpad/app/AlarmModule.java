@@ -163,6 +163,12 @@ public class AlarmModule extends ReactContextBaseJavaModule {
                     apkFile
                 );
 
+                // 업데이트 설치 직전 시각 기록 — 설치로 프로세스가 kill된 뒤 서비스가 START_STICKY로
+                // 재시작될 때 ScreenUnlockService.onCreate가 이 값을 보고 cold-start 가드를 무장한다.
+                // (BootReceiver 경로만 커버하던 guard의 사각지대 = 업데이트 직후 auto-launch가
+                //  cold-init 중 MainActivity를 흔들어 "떴다 꺼짐" 나던 문제 방지.)
+                getPrefs().edit().putLong("last_update_at", System.currentTimeMillis()).apply();
+
                 Intent installIntent = new Intent(Intent.ACTION_VIEW);
                 installIntent.setDataAndType(apkUri, "application/vnd.android.package-archive");
                 installIntent.addFlags(

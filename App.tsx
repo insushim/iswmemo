@@ -28,6 +28,7 @@ import {
 } from "./src/lib/taskAlarm";
 import { promptAutoStart } from "./src/lib/autostart";
 import { checkForUpdate } from "./src/lib/appUpdate";
+import { persistentGet, persistentSet } from "./src/lib/storage";
 
 const { AutoLaunchModule } = NativeModules;
 
@@ -120,6 +121,21 @@ export default function App() {
     const requestAllPermissions = async () => {
       try {
         if (Platform.OS !== "android" || !AutoLaunchModule) return;
+
+        // 온보딩 완료(=이전에 필수 권한을 부여)한 사용자는 앱 업데이트/재실행 시 권한 팝업을
+        // 반복하지 않는다. 앱 업데이트는 시스템 권한을 유지하므로("처음 설치한 사람에게만
+        // 권한 요청") overlay만 조용히 재확인해 자동표시 서비스만 보장하고 나머지는 skip한다.
+        // 필수 권한이 실제로 빠진 경우엔 설정 화면(SettingsScreen)의 권한 배너로 안내된다.
+        const onboarded = await persistentGet("perms_onboarded_v1");
+        if (onboarded === "true") {
+          try {
+            const overlayOk = await AutoLaunchModule.checkOverlayPermission();
+            if (overlayOk && autoLaunchEnabled) AutoLaunchModule.startService();
+          } catch {}
+          // 푸시 토큰은 매 실행 갱신(권한 팝업 없음 — 미허용이면 내부에서 skip)
+          registerExpoPushToken().catch(() => {});
+          return;
+        }
 
         // 1. 다른 앱 위에 표시 권한 (최우선, 필수)
         const hasOverlay = await AutoLaunchModule.checkOverlayPermission();
@@ -287,6 +303,14 @@ export default function App() {
 
         // 5. 자동 시작 권한 안내 (제조사별)
         await promptAutoStart();
+
+        // 온보딩 완료 표시 — 필수 권한(overlay) 확보 시에만 기록한다. 이후 업데이트/재실행에선
+        // 위 gating으로 권한 팝업 전체를 skip. overlay를 못 받았으면 플래그를 남기지 않아
+        // 다음 실행에서 다시 온보딩(필수 권한 확보 시도)한다.
+        try {
+          const overlayOk = await AutoLaunchModule.checkOverlayPermission();
+          if (overlayOk) await persistentSet("perms_onboarded_v1", "true");
+        } catch {}
       } catch (e) {
         if (__DEV__) console.error("Permission request error:", e);
       }
