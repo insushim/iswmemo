@@ -20,9 +20,13 @@ import android.app.ActivityManager;
 import java.util.List;
 
 public class ScreenUnlockService extends Service {
+    private static final String TAG = "ScreenUnlockSvc";
     private static final String CHANNEL_ID = "auto_launch_channel";
     private static final int NOTIFICATION_ID = 2001;
     private static final long LAUNCH_DEBOUNCE_MS = 2500;
+    // MainActivity가 방금 생성돼 JS 번들 cold init 중인 동안 재launch를 억제하는 창(窓).
+    // boot 경로 전용 guardUntil이 못 막는 "앱 직접 실행(업데이트 직후) 콜드스타트"를 커버.
+    private static final long COLD_INIT_GUARD_MS = 6000;
     // keyguard window 준비 기다림 + passive wake 감지 (너무 짧으면 isInteractive 체크가 false negative)
     private static final long SCREEN_ON_LAUNCH_DELAY_MS = 350;
     private static final long USER_PRESENT_LAUNCH_DELAY_MS = 100;
@@ -41,6 +45,17 @@ public class ScreenUnlockService extends Service {
     private final Runnable launchRunnable = new Runnable() {
         @Override public void run() { launchApp(getApplicationContext()); }
     };
+    // MainActivity lifecycle 상태 — MainApplication.onCreate()에서 프로세스 시작 시점에
+    // 전역(ActivityLifecycleCallbacks) 등록되어 갱신된다. static인 이유:
+    //  1) 서비스 생성이 지연돼도 최초 MainActivity의 created/resumed 이벤트를 놓치지 않음
+    //     (서비스 onCreate에서 등록하면 MainActivity.onCreate보다 늦게 스케줄될 수 있는 race).
+    //  2) 서비스가 재생성돼도 상태가 유지됨.
+    //  3) process-death로 프로세스가 통째로 죽으면 클래스가 언로드되어 false/0으로 초기화 →
+    //     잠금화면 자동표시(core UX)를 방해하지 않음.
+    // 이 process-내 정확 판정으로, ActivityManager importance 휴리스틱이 잠금화면 위 표시를
+    // FOREGROUND로 못 잡던 false-negative(→ 불필요한 재launch → window focus 흔들림 → 터치 먹통)를 대체.
+    public static volatile boolean mainActivityResumed = false;
+    public static volatile long mainActivityCreatedAt = 0;
 
     @Override
     public void onCreate() {
@@ -182,26 +197,42 @@ public class ScreenUnlockService extends Service {
         long now = System.currentTimeMillis();
         // 부팅/업데이트 직후 JS 번들 cold init 중 MainActivity launch → "엄청난 깜빡임" 방지.
         // 단 boot 경로에서만 무장되므로(S-3), process-death 재시작 후엔 즉시 자동표시 가능.
-        if (guardUntil > 0 && now < guardUntil) return;
+        if (guardUntil > 0 && now < guardUntil) { android.util.Log.d(TAG, "skip: boot cold guard"); return; }
         // passive wake(알림/센서/도즈종료) 대응: delay 동안 화면이 이미 꺼져가는 중이면 abort.
         // 주의: isKeyguardLocked 체크는 하지 않음 — 잠금화면 위 자동 표시가 core UX
         try {
             PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-            if (pm != null && !pm.isInteractive()) return;
+            if (pm != null && !pm.isInteractive()) { android.util.Log.d(TAG, "skip: not interactive (passive wake)"); return; }
         } catch (Exception e) {}
         // 전화 수신/통화 중이면 실행하지 않음
-        if (isPhoneCallActive(context)) return;
-        // 이미 앱이 포그라운드면 재런치 skip
-        if (isAppInForeground(context)) return;
+        if (isPhoneCallActive(context)) { android.util.Log.d(TAG, "skip: phone call active"); return; }
+        // 이미 사용자 눈앞에 resume 상태로 떠 있으면 재launch 불필요.
+        // process-내 정확 판정 → 잠금화면 위 표시를 못 잡던 ActivityManager false-negative로 인한
+        // 불필요한 재launch(→ window focus 흔들림 → 터치 먹통)를 근본 차단.
+        if (mainActivityResumed) { android.util.Log.d(TAG, "skip: MainActivity already resumed"); return; }
+        // MainActivity가 생성됐지만 아직 첫 resume 전(JS 번들 cold init 중)이면 재진입 금지.
+        // 첫 resume 완료 시 콜백이 mainActivityCreatedAt=0으로 리셋하므로, 초기화가 끝난 뒤엔
+        // 이 가드가 걸리지 않아 "잠깐 보고 바로 화면 껐다 켜기" 같은 정상 패턴의 자동표시(core UX)를
+        // 억제하지 않는다. boot guard(guardUntil)가 못 막는 "앱 직접 실행(업데이트 직후)" 콜드스타트만 커버.
+        long created = mainActivityCreatedAt;
+        if (created > 0 && android.os.SystemClock.elapsedRealtime() - created < COLD_INIT_GUARD_MS) {
+            android.util.Log.d(TAG, "skip: MainActivity cold-init in progress");
+            return;
+        }
+        // 이미 앱이 포그라운드면 재런치 skip (보조 판정)
+        if (isAppInForeground(context)) { android.util.Log.d(TAG, "skip: app already foreground"); return; }
         // 디바운싱: 마지막 런치로부터 2.5초 이내면 무시
-        if (now - lastLaunchTime < LAUNCH_DEBOUNCE_MS) return;
+        if (now - lastLaunchTime < LAUNCH_DEBOUNCE_MS) { android.util.Log.d(TAG, "skip: debounce"); return; }
         lastLaunchTime = now;
+        android.util.Log.d(TAG, "launch: MainActivity (auto-show)");
         try {
             Intent launchIntent = new Intent(context, MainActivity.class);
-            // NO_ANIMATION: keyguard 위에 진입할 때 window 슬라이드 애니메이션 제거 → 깜빡임 완화
+            // NO_ANIMATION: keyguard 위에 진입할 때 window 슬라이드 애니메이션 제거 → 깜빡임 완화.
+            // REORDER_TO_FRONT 제거: 기존 task를 앞으로 끌어내며 z-order/focus를 흔들어
+            // 잠금화면 위 RN window의 터치 이벤트 유실을 유발 → NEW_TASK|SINGLE_TOP만 사용
+            // (MainActivity는 launchMode=singleTask라 중복 인스턴스 없이 재사용됨).
             launchIntent.addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK
-                | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                 | Intent.FLAG_ACTIVITY_SINGLE_TOP
                 | Intent.FLAG_ACTIVITY_NO_ANIMATION);
             launchIntent.putExtra("from_screen_on", true);
@@ -220,6 +251,7 @@ public class ScreenUnlockService extends Service {
     @Override public IBinder onBind(Intent intent) { return null; }
     @Override public void onDestroy() {
         if (screenReceiver != null) { try { unregisterReceiver(screenReceiver); } catch (Exception e) {} }
+        // lifecycle 콜백은 MainApplication(프로세스 수명)에 등록되므로 서비스 onDestroy에서 해제하지 않음.
         super.onDestroy();
         // START_STICKY가 시스템 재시작을 처리 - 수동 재시작 제거 (APK 업데이트 충돌 방지)
     }
