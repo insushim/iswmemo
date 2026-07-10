@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSyncRefresh } from "../lib/syncRefresh";
 import {
   Plus,
   X,
@@ -244,6 +245,13 @@ export default function CalendarScreen() {
       fetchEvents();
     }, []),
   );
+
+  // 스쿨데스크/웹 변경 실시간 반영 (변경신호 푸시 → refetch)
+  useSyncRefresh(["tasks", "events", "routines"], () => {
+    fetchSchedules();
+    fetchTasks();
+    fetchEvents();
+  });
 
   // 잠금화면 알람에서 "일정 삭제" 누른 경우 → pending delete 처리
   const processPendingScheduleDelete = useCallback(async () => {

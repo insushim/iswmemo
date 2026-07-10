@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSyncRefresh } from "../lib/syncRefresh";
 import {
   Plus,
   X,
@@ -142,6 +143,9 @@ export default function HabitsScreen() {
       }
     }, []),
   );
+
+  // 스쿨데스크/웹 변경 실시간 반영 (변경신호 푸시 → refetch)
+  useSyncRefresh(["habits", "routines"], fetchAll);
 
   const onRefresh = async () => {
     setRefreshing(true);

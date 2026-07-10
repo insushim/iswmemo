@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSyncRefresh } from "../lib/syncRefresh";
 import { Plus, Clock, X, Check, Trash2 } from "lucide-react-native";
 import * as SecureStore from "expo-secure-store";
 import { useTheme } from "../lib/theme";
@@ -86,6 +87,9 @@ export default function RoutinesScreen() {
       }
     }, []),
   );
+
+  // 스쿨데스크/웹 변경 실시간 반영 (변경신호 푸시 → refetch)
+  useSyncRefresh(["routines"], fetchRoutines);
 
   const onRefresh = async () => {
     setRefreshing(true);

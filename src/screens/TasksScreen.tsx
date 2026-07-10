@@ -28,6 +28,7 @@ import * as Clipboard from "expo-clipboard";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSyncRefresh } from "../lib/syncRefresh";
 import { useTheme, getPriorityColor } from "../lib/theme";
 
 import { Swipeable } from "react-native-gesture-handler";
@@ -66,6 +67,9 @@ export default function TasksScreen() {
       }
     }, []),
   );
+
+  // 스쿨데스크/웹 변경 실시간 반영 (변경신호 푸시 → refetch)
+  useSyncRefresh(["tasks"], fetchTasks);
 
   const onRefresh = async () => {
     setRefreshing(true);

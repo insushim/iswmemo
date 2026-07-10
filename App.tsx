@@ -29,6 +29,8 @@ import {
 import { promptAutoStart } from "./src/lib/autostart";
 import { checkForUpdate } from "./src/lib/appUpdate";
 import { persistentGet, persistentSet } from "./src/lib/storage";
+import { primeSyncOriginId, getCachedSyncOriginId } from "./src/lib/sync-origin";
+import { emitSyncChanged } from "./src/lib/syncRefresh";
 
 const { AutoLaunchModule } = NativeModules;
 
@@ -59,6 +61,22 @@ export default function App() {
   const { colors } = useTheme();
   const appReady = useRef(false);
   const [appInitialized, setAppInitialized] = React.useState(false);
+
+  // 실시간 변경신호(데이터 없는 sync 푸시) 수신 → 관련 화면 refetch 이벤트 중계.
+  // setNotificationHandler 가 non-알람 알림 표시를 막아도 수신 리스너는 호출된다.
+  useEffect(() => {
+    primeSyncOriginId();
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification.request.content.data as
+        | { type?: string; entity?: string; origin?: string }
+        | undefined;
+      if (data?.type !== "sync" || typeof data.entity !== "string") return;
+      const own = getCachedSyncOriginId();
+      if (own && data.origin === own) return; // 자기 발신 에코 무시
+      emitSyncChanged(data.entity);
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     const init = async () => {

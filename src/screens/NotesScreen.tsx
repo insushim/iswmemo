@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSyncRefresh } from "../lib/syncRefresh";
 import { Plus, StickyNote, X, Search, Trash2, Copy } from "lucide-react-native";
 import * as Clipboard from "expo-clipboard";
 import { format } from "date-fns";
@@ -89,6 +90,9 @@ export default function NotesScreen() {
       }
     }, []),
   );
+
+  // 스쿨데스크/웹 변경 실시간 반영 (변경신호 푸시 → refetch)
+  useSyncRefresh(["notes"], fetchNotes);
 
   const onRefresh = async () => {
     setRefreshing(true);

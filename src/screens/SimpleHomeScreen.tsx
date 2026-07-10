@@ -23,6 +23,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSyncRefresh } from "../lib/syncRefresh";
 import {
   Swipeable,
   TouchableOpacity as GHTouchable,
@@ -208,6 +209,9 @@ export default function SimpleHomeScreen() {
       }
     }, [fetchData]),
   );
+
+  // 스쿨데스크/웹 변경 실시간 반영 (변경신호 푸시 → refetch)
+  useSyncRefresh(["tasks", "events", "routines"], fetchData);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

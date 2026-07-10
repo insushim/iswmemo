@@ -1,6 +1,7 @@
 import { NativeModules, Platform } from "react-native";
 import { API_URL } from "./config";
 import { persistentGet, persistentSet, persistentDelete } from "./storage";
+import { getSyncOriginId } from "./sync-origin";
 import { reportError } from "./errorReporter";
 import { encrypt, decrypt, isEncrypted } from "./e2ee";
 import { getE2EEKey } from "./e2ee-store";
@@ -301,6 +302,9 @@ class ApiClient {
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
+      // 실시간 변경신호 에코 억제용 발신 식별(비밀 아님)
+      "X-Sync-Origin": await getSyncOriginId().catch(() => ""),
+      "X-Sync-Client": "mobile",
       ...(options.headers as Record<string, string>),
     };
 
