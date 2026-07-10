@@ -9,10 +9,12 @@ import android.net.Uri;
 import android.os.Build;
 import androidx.core.content.FileProvider;
 
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.WritableMap;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -73,14 +75,18 @@ public class AlarmModule extends ReactContextBaseJavaModule {
         }
     }
 
+    // type: "task" | "schedule" | "timer" — JS(taskAlarm.ts)가 4번째 인자로 넘기던 값.
+    // 이전 시그니처는 3인자 + Promise라 type이 브릿지에서 유실됐다(7way 확정 — JS/네이티브
+    // 인자 불일치). AlarmActivity가 완료 처리 시 삭제 대상(task vs routine)을 구분하는 데 쓴다.
     @ReactMethod
-    public void scheduleAlarm(String taskId, String title, double triggerTimeMs, Promise promise) {
+    public void scheduleAlarm(String taskId, String title, double triggerTimeMs, String type, Promise promise) {
         try {
             Context context = getReactApplicationContext();
             AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
             Intent intent = new Intent(context, AlarmActivity.class);
             intent.putExtra("taskId", taskId);
             intent.putExtra("title", title);
+            intent.putExtra("type", type == null ? "task" : type);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             int requestCode = taskId.hashCode();
             PendingIntent pendingIntent = PendingIntent.getActivity(
@@ -115,8 +121,34 @@ public class AlarmModule extends ReactContextBaseJavaModule {
         try {
             Context context = getReactApplicationContext();
             Intent intent = new Intent("com.growthpad.app.DISMISS_ALARM");
+            // 자기 패키지로 한정한 explicit broadcast — 다른 앱으로 새거나(정보 노출)
+            // implicit broadcast 제약에 걸리는 것을 방지.
+            intent.setPackage(context.getPackageName());
             context.sendBroadcast(intent);
         } catch (Exception e) { e.printStackTrace(); }
+    }
+
+    // 알람 화면(AlarmActivity)에서 "완료 처리"했지만 네이티브 HTTP DELETE가 실패/skip된 항목을
+    // JS가 앱 복귀 시 이어서 지우는 폴백 큐. JS(processPendingDelete)는 처음부터 이 API를
+    // 호출하고 있었지만 네이티브 구현이 없어 유령 기능이었다(7way 확정 버그).
+    @ReactMethod
+    public void getPendingDelete(Promise promise) {
+        try {
+            String id = getPrefs().getString("pending_delete_id", null);
+            if (id == null || id.isEmpty()) { promise.resolve(null); return; }
+            WritableMap map = Arguments.createMap();
+            map.putString("id", id);
+            map.putString("type", getPrefs().getString("pending_delete_type", "task"));
+            promise.resolve(map);
+        } catch (Exception e) { promise.reject("ERROR", e.getMessage()); }
+    }
+
+    @ReactMethod
+    public void clearPendingDelete(Promise promise) {
+        try {
+            getPrefs().edit().remove("pending_delete_id").remove("pending_delete_type").apply();
+            promise.resolve(true);
+        } catch (Exception e) { promise.reject("ERROR", e.getMessage()); }
     }
 
     // APK를 앱 내부 캐시 디렉토리에 다운로드한 후 시스템 인스톨러 실행.
@@ -131,8 +163,17 @@ public class AlarmModule extends ReactContextBaseJavaModule {
                     apkFile.delete();
                 }
 
-                // Redirect 따라가며 다운로드
+                // 신뢰 호스트(GitHub 릴리스)만 허용 — 임의 URL로 APK 설치 유도되는 것 방지.
                 URL currentUrl = new URL(url);
+                String host = currentUrl.getHost();
+                boolean allowedHost = "https".equals(currentUrl.getProtocol()) && host != null && (
+                    host.equals("github.com") || host.endsWith(".github.com")
+                    || host.equals("githubusercontent.com") || host.endsWith(".githubusercontent.com"));
+                if (!allowedHost) {
+                    promise.reject("DOWNLOAD_ERROR", "untrusted APK host: " + host);
+                    return;
+                }
+                // Redirect 따라가며 다운로드
                 HttpURLConnection conn = (HttpURLConnection) currentUrl.openConnection();
                 conn.setInstanceFollowRedirects(true);
                 conn.setConnectTimeout(30000);

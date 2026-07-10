@@ -346,6 +346,7 @@ export default function TasksScreen() {
             <Swipeable
               ref={(ref) => {
                 if (ref) swipeableRefs.current.set(task.id, ref);
+                else swipeableRefs.current.delete(task.id);
               }}
               renderLeftActions={renderLeftActions(task)}
               renderRightActions={renderRightActions(task)}

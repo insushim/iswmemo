@@ -141,6 +141,10 @@ public class BootReceiver extends BroadcastReceiver {
             || "com.htc.intent.action.QUICKBOOT_POWERON".equals(action);
         if (isBoot) {
             try {
+                // 사용자가 자동실행을 꺼 뒀으면 부팅 시에도 시작하지 않는다(설정 존중).
+                String enabled = context.getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE)
+                    .getString("auto_launch_enabled", "true");
+                if ("false".equals(enabled)) return;
                 Intent serviceIntent = new Intent(context, ScreenUnlockService.class);
                 // 부팅 직후엔 JS 번들 cold init 중 launch 깜빡임을 막기 위해 가드 무장 요청
                 serviceIntent.putExtra("cold_start_guard", true);
@@ -194,6 +198,10 @@ public class ScreenUnlockService extends Service {
     private static final long SCREEN_ON_LAUNCH_DELAY_MS = 350;
     private static final long USER_PRESENT_LAUNCH_DELAY_MS = 100;
     private static final long SCREEN_ON_WAKELOCK_MS = 2500;
+    // resume 직후 keyguard가 window focus를 아직 안 넘긴 정상 전환과, focus를 영영 못 받는
+    // 먹통 상태를 구분하는 유예. 유예 안이면 재확인만 예약하고, 지나면 복구 relaunch.
+    private static final long FOCUS_SETTLE_MS = 800;
+    private static final long FOCUS_RECHECK_MS = 1000;
     // 서비스 시작 직후(업데이트 설치/부팅 등) N초 동안 auto-launch 억제 — JS 번들 cold init 충돌 방지
     private static final long SERVICE_COLD_START_GUARD_MS = 15000;
     private BroadcastReceiver screenReceiver;
@@ -219,6 +227,17 @@ public class ScreenUnlockService extends Service {
     // FOREGROUND로 못 잡던 false-negative(→ 불필요한 재launch → window focus 흔들림 → 터치 먹통)를 대체.
     public static volatile boolean mainActivityResumed = false;
     public static volatile long mainActivityCreatedAt = 0;
+    // onStart~onStop 사이(화면에 보이거나 전환 중). resume 직전 과도기에 불필요한
+    // 재launch(→ z-order/focus 흔들림 → 터치 먹통)를 막는 가드로 쓴다.
+    public static volatile boolean mainActivityStarted = false;
+    // MainActivity.onWindowFocusChanged로 갱신. resumed인데 focus가 없는 상태가
+    // 지속되면 터치가 먹지 않는 먹통 상태 → 이때만 표적 복구 relaunch를 허용한다.
+    public static volatile boolean mainActivityHasFocus = true;
+    // 마지막 onResume 시각(elapsedRealtime). focus 유예(FOCUS_SETTLE_MS) 기준점.
+    public static volatile long mainActivityResumedAt = 0;
+    // AlarmActivity가 떠 있는 동안 자동표시 launch 금지 — 울리는 알람 위로 MainActivity를
+    // 끌어올리면 singleTask clear-top으로 알람이 파괴되거나 z-order 경합이 생긴다.
+    public static volatile boolean alarmActivityVisible = false;
 
     @Override
     public void onCreate() {
@@ -380,10 +399,39 @@ public class ScreenUnlockService extends Service {
         } catch (Exception e) {}
         // 전화 수신/통화 중이면 실행하지 않음
         if (isPhoneCallActive(context)) { android.util.Log.d(TAG, "skip: phone call active"); return; }
-        // 이미 사용자 눈앞에 resume 상태로 떠 있으면 재launch 불필요.
+        // 사용자가 자동표시를 끈 경우(설정 토글) 전 경로 중단. 기본값은 켜짐(core UX).
+        try {
+            String enabled = context.getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE)
+                .getString("auto_launch_enabled", "true");
+            if ("false".equals(enabled)) { android.util.Log.d(TAG, "skip: auto-launch disabled by user"); return; }
+        } catch (Exception e) {}
+        // 알람(AlarmActivity)이 떠 있으면 자동표시 금지 — 알람이 화면을 깨우며 SCREEN_ON을
+        // 유발하므로, 여기서 막지 않으면 울리는 알람 위로 MainActivity가 올라와
+        // singleTask clear-top으로 알람을 파괴하거나 z-order/focus 경합을 일으킨다.
+        if (alarmActivityVisible) { android.util.Log.d(TAG, "skip: AlarmActivity visible"); return; }
+        // 이미 사용자 눈앞에 resume + window focus 상태로 떠 있으면 재launch 불필요.
         // process-내 정확 판정 → 잠금화면 위 표시를 못 잡던 ActivityManager false-negative로 인한
         // 불필요한 재launch(→ window focus 흔들림 → 터치 먹통)를 근본 차단.
-        if (mainActivityResumed) { android.util.Log.d(TAG, "skip: MainActivity already resumed"); return; }
+        boolean focusLost = mainActivityResumed && !mainActivityHasFocus;
+        if (mainActivityResumed && mainActivityHasFocus) { android.util.Log.d(TAG, "skip: MainActivity resumed+focused"); return; }
+        if (focusLost) {
+            // resume 직후 keyguard가 focus를 아직 안 넘긴 정상 전환일 수 있다 → 유예 안이면
+            // 재확인만 예약. 유예를 넘겨도 focus가 없으면 "화면은 보이는데 터치가 안 먹는"
+            // 먹통 상태로 보고 표적 복구 relaunch로 focus 재협상을 강제한다(7way 수렴 발견).
+            long sinceResume = android.os.SystemClock.elapsedRealtime() - mainActivityResumedAt;
+            if (sinceResume < FOCUS_SETTLE_MS) {
+                android.util.Log.d(TAG, "focus settling (" + sinceResume + "ms) — recheck scheduled");
+                handler.removeCallbacks(launchRunnable);
+                handler.postDelayed(launchRunnable, FOCUS_RECHECK_MS);
+                return;
+            }
+            android.util.Log.d(TAG, "recovery: resumed without focus for " + sinceResume + "ms");
+        } else if (mainActivityStarted) {
+            // 보이는 상태로 resume 전환 중(화면 off→on 직후 등). 자연 resume이 곧 일어나므로
+            // 재launch하면 오히려 task 끌어올리기로 focus를 흔든다 → skip.
+            android.util.Log.d(TAG, "skip: MainActivity visible, resume in transit");
+            return;
+        }
         // MainActivity가 생성됐지만 아직 첫 resume 전(JS 번들 cold init 중)이면 재진입 금지.
         // 첫 resume 완료 시 콜백이 mainActivityCreatedAt=0으로 리셋하므로, 초기화가 끝난 뒤엔
         // 이 가드가 걸리지 않아 "잠깐 보고 바로 화면 껐다 켜기" 같은 정상 패턴의 자동표시(core UX)를
@@ -393,12 +441,13 @@ public class ScreenUnlockService extends Service {
             android.util.Log.d(TAG, "skip: MainActivity cold-init in progress");
             return;
         }
-        // 이미 앱이 포그라운드면 재런치 skip (보조 판정)
-        if (isAppInForeground(context)) { android.util.Log.d(TAG, "skip: app already foreground"); return; }
+        // 이미 앱이 포그라운드면 재런치 skip (보조 판정 — focus 복구 경로에서는 건너뜀:
+        // resumed 상태라 importance가 FOREGROUND로 잡혀 복구가 막히기 때문)
+        if (!focusLost && isAppInForeground(context)) { android.util.Log.d(TAG, "skip: app already foreground"); return; }
         // 디바운싱: 마지막 런치로부터 2.5초 이내면 무시
         if (now - lastLaunchTime < LAUNCH_DEBOUNCE_MS) { android.util.Log.d(TAG, "skip: debounce"); return; }
         lastLaunchTime = now;
-        android.util.Log.d(TAG, "launch: MainActivity (auto-show)");
+        android.util.Log.d(TAG, focusLost ? "launch: MainActivity (focus recovery)" : "launch: MainActivity (auto-show)");
         try {
             Intent launchIntent = new Intent(context, MainActivity.class);
             // NO_ANIMATION: keyguard 위에 진입할 때 window 슬라이드 애니메이션 제거 → 깜빡임 완화.
@@ -431,9 +480,14 @@ public class ScreenUnlockService extends Service {
     }
     @Override public void onTaskRemoved(Intent rootIntent) {
         try {
-            Intent restartIntent = new Intent(this, ScreenUnlockService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(restartIntent);
-            else startService(restartIntent);
+            // 사용자가 자동실행을 꺼 뒀으면 부활하지 않는다(설정 존중).
+            String enabled = getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE)
+                .getString("auto_launch_enabled", "true");
+            if (!"false".equals(enabled)) {
+                Intent restartIntent = new Intent(this, ScreenUnlockService.class);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(restartIntent);
+                else startService(restartIntent);
+            }
         } catch (Exception e) {}
         super.onTaskRemoved(rootIntent);
     }
@@ -533,9 +587,24 @@ public class AutoLaunchModule extends ReactContextBaseJavaModule {
     public void startService() {
         try {
             Context context = getReactApplicationContext();
+            // 사용자 의도 기록 — MainActivity/BootReceiver/onTaskRemoved/launchApp이 이 플래그를 존중.
+            context.getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE)
+                .edit().putString("auto_launch_enabled", "true").apply();
             Intent intent = new Intent(context, ScreenUnlockService.class);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent);
             else context.startService(intent);
+        } catch (Exception e) { e.printStackTrace(); }
+    }
+
+    // 설정 토글 OFF 경로. 이전에는 JS(SettingsScreen)가 호출하는데 네이티브에 없어서
+    // TypeError로 토글 자체가 죽고 서비스도 계속 살아 있었다(7way 확정 버그).
+    @ReactMethod
+    public void stopService() {
+        try {
+            Context context = getReactApplicationContext();
+            context.getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE)
+                .edit().putString("auto_launch_enabled", "false").apply();
+            context.stopService(new Intent(context, ScreenUnlockService.class));
         } catch (Exception e) { e.printStackTrace(); }
     }
 }
@@ -584,10 +653,12 @@ import android.net.Uri;
 import android.os.Build;
 import androidx.core.content.FileProvider;
 
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.WritableMap;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -606,19 +677,25 @@ public class AlarmModule extends ReactContextBaseJavaModule {
         return getReactApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
+    // SharedPreferences 기반 key-value 저장소 — expo-secure-store가 기기 버그로
+    // null 반환하는 경우를 우회하기 위한 reliable fallback
     @ReactMethod
     public void savePref(String key, String value, Promise promise) {
         try {
             getPrefs().edit().putString(key, value).apply();
             promise.resolve(true);
-        } catch (Exception e) { promise.reject("ERROR", e.getMessage()); }
+        } catch (Exception e) {
+            promise.reject("ERROR", e.getMessage());
+        }
     }
 
     @ReactMethod
     public void getPref(String key, Promise promise) {
         try {
             promise.resolve(getPrefs().getString(key, null));
-        } catch (Exception e) { promise.reject("ERROR", e.getMessage()); }
+        } catch (Exception e) {
+            promise.reject("ERROR", e.getMessage());
+        }
     }
 
     @ReactMethod
@@ -626,9 +703,12 @@ public class AlarmModule extends ReactContextBaseJavaModule {
         try {
             getPrefs().edit().remove(key).apply();
             promise.resolve(true);
-        } catch (Exception e) { promise.reject("ERROR", e.getMessage()); }
+        } catch (Exception e) {
+            promise.reject("ERROR", e.getMessage());
+        }
     }
 
+    // 기존 saveAuthToken (JS가 호출하고 있어 호환 유지)
     @ReactMethod
     public void saveAuthToken(String token, Promise promise) {
         try {
@@ -639,14 +719,18 @@ public class AlarmModule extends ReactContextBaseJavaModule {
         }
     }
 
+    // type: "task" | "schedule" | "timer" — JS(taskAlarm.ts)가 4번째 인자로 넘기던 값.
+    // 이전 시그니처는 3인자 + Promise라 type이 브릿지에서 유실됐다(7way 확정 — JS/네이티브
+    // 인자 불일치). AlarmActivity가 완료 처리 시 삭제 대상(task vs routine)을 구분하는 데 쓴다.
     @ReactMethod
-    public void scheduleAlarm(String taskId, String title, double triggerTimeMs, Promise promise) {
+    public void scheduleAlarm(String taskId, String title, double triggerTimeMs, String type, Promise promise) {
         try {
             Context context = getReactApplicationContext();
             AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
             Intent intent = new Intent(context, AlarmActivity.class);
             intent.putExtra("taskId", taskId);
             intent.putExtra("title", title);
+            intent.putExtra("type", type == null ? "task" : type);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             int requestCode = taskId.hashCode();
             PendingIntent pendingIntent = PendingIntent.getActivity(
@@ -680,21 +764,60 @@ public class AlarmModule extends ReactContextBaseJavaModule {
     public void dismissAlarm() {
         try {
             Context context = getReactApplicationContext();
-            Intent intent = new Intent("${pkg}.DISMISS_ALARM");
+            Intent intent = new Intent("com.growthpad.app.DISMISS_ALARM");
+            // 자기 패키지로 한정한 explicit broadcast — 다른 앱으로 새거나(정보 노출)
+            // implicit broadcast 제약에 걸리는 것을 방지.
+            intent.setPackage(context.getPackageName());
             context.sendBroadcast(intent);
         } catch (Exception e) { e.printStackTrace(); }
     }
 
-    // APK를 앱 내부 캐시에 다운로드한 뒤 시스템 인스톨러 실행
+    // 알람 화면(AlarmActivity)에서 "완료 처리"했지만 네이티브 HTTP DELETE가 실패/skip된 항목을
+    // JS가 앱 복귀 시 이어서 지우는 폴백 큐. JS(processPendingDelete)는 처음부터 이 API를
+    // 호출하고 있었지만 네이티브 구현이 없어 유령 기능이었다(7way 확정 버그).
+    @ReactMethod
+    public void getPendingDelete(Promise promise) {
+        try {
+            String id = getPrefs().getString("pending_delete_id", null);
+            if (id == null || id.isEmpty()) { promise.resolve(null); return; }
+            WritableMap map = Arguments.createMap();
+            map.putString("id", id);
+            map.putString("type", getPrefs().getString("pending_delete_type", "task"));
+            promise.resolve(map);
+        } catch (Exception e) { promise.reject("ERROR", e.getMessage()); }
+    }
+
+    @ReactMethod
+    public void clearPendingDelete(Promise promise) {
+        try {
+            getPrefs().edit().remove("pending_delete_id").remove("pending_delete_type").apply();
+            promise.resolve(true);
+        } catch (Exception e) { promise.reject("ERROR", e.getMessage()); }
+    }
+
+    // APK를 앱 내부 캐시 디렉토리에 다운로드한 후 시스템 인스톨러 실행.
+    // Linking.openURL(browser)의 이중 다운로드/수동 열기 문제 해결.
     @ReactMethod
     public void downloadAndInstallApk(String url, Promise promise) {
         new Thread(() -> {
             try {
                 Context context = getReactApplicationContext();
                 File apkFile = new File(context.getCacheDir(), "update.apk");
-                if (apkFile.exists()) apkFile.delete();
+                if (apkFile.exists()) {
+                    apkFile.delete();
+                }
 
+                // 신뢰 호스트(GitHub 릴리스)만 허용 — 임의 URL로 APK 설치 유도되는 것 방지.
                 URL currentUrl = new URL(url);
+                String host = currentUrl.getHost();
+                boolean allowedHost = "https".equals(currentUrl.getProtocol()) && host != null && (
+                    host.equals("github.com") || host.endsWith(".github.com")
+                    || host.equals("githubusercontent.com") || host.endsWith(".githubusercontent.com"));
+                if (!allowedHost) {
+                    promise.reject("DOWNLOAD_ERROR", "untrusted APK host: " + host);
+                    return;
+                }
+                // Redirect 따라가며 다운로드
                 HttpURLConnection conn = (HttpURLConnection) currentUrl.openConnection();
                 conn.setInstanceFollowRedirects(true);
                 conn.setConnectTimeout(30000);
@@ -718,6 +841,7 @@ public class AlarmModule extends ReactContextBaseJavaModule {
                 input.close();
                 conn.disconnect();
 
+                // FileSystemFileProvider (expo-file-system 제공)를 통해 content:// URI 생성
                 Uri apkUri = FileProvider.getUriForFile(
                     context,
                     context.getPackageName() + ".FileSystemFileProvider",
@@ -828,7 +952,10 @@ public class AlarmActivity extends Activity {
 
         String taskId = getIntent().getStringExtra("taskId");
         String title = getIntent().getStringExtra("title");
+        String alarmType = getIntent().getStringExtra("type");
         if (title == null) title = "알람";
+        if (alarmType == null) alarmType = "task";
+        final String fType = alarmType;
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -868,7 +995,7 @@ public class AlarmActivity extends Activity {
             deleteBtn.setPadding(48, 24, 48, 24);
             final String fTaskId = taskId;
             deleteBtn.setOnClickListener(v -> {
-                new Thread(() -> deleteTaskSync(fTaskId)).start();
+                new Thread(() -> deleteTaskSync(fTaskId, fType)).start();
                 stopAlarm();
                 finish();
             });
@@ -883,9 +1010,9 @@ public class AlarmActivity extends Activity {
             @Override public void onReceive(Context context, Intent intent) { stopAlarm(); finish(); }
         };
         if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(dismissReceiver, new IntentFilter("${pkg}.DISMISS_ALARM"), Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(dismissReceiver, new IntentFilter("com.growthpad.app.DISMISS_ALARM"), Context.RECEIVER_NOT_EXPORTED);
         } else {
-            registerReceiver(dismissReceiver, new IntentFilter("${pkg}.DISMISS_ALARM"));
+            registerReceiver(dismissReceiver, new IntentFilter("com.growthpad.app.DISMISS_ALARM"));
         }
     }
 
@@ -913,15 +1040,25 @@ public class AlarmActivity extends Activity {
         try { if (vibrator != null) vibrator.cancel(); } catch (Exception e) {}
     }
 
-    private void deleteTaskSync(String taskId) {
+    // 네이티브 DELETE가 실패/skip되면 pending_delete_*에 기록 — JS(processPendingDelete)가
+    // 앱 복귀 시 인증된 api 클라이언트로 이어서 지운다(폴백 큐). 성공 시엔 큐를 비운다.
+    private void setPendingDelete(SharedPreferences prefs, String taskId, String type) {
+        prefs.edit()
+            .putString("pending_delete_id", taskId)
+            .putString("pending_delete_type", type == null ? "task" : type)
+            .apply();
+    }
+
+    private void deleteTaskSync(String taskId, String type) {
+        SharedPreferences prefs = getApplicationContext()
+            .getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE);
         try {
             // JS가 SharedPreferences("iwmemo_storage")/"auth_token"에 동기화해 둔 JWT 사용.
             // 토큰이 없으면 서버가 401만 반환하므로 시도 자체를 skip (조용한 무동작 방지).
-            SharedPreferences prefs = getApplicationContext()
-                .getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE);
             String token = prefs.getString("auth_token", null);
             if (token == null || token.isEmpty()) {
-                android.util.Log.w("AlarmActivity", "deleteTaskSync: auth_token 없음 — DELETE skip");
+                android.util.Log.w("AlarmActivity", "deleteTaskSync: auth_token 없음 — pending 기록 후 skip");
+                setPendingDelete(prefs, taskId, type);
                 return;
             }
             String urlStr = "https://growthpad.simssijjang.workers.dev/api/tasks?id="
@@ -945,13 +1082,20 @@ public class AlarmActivity extends Activity {
                     conn.disconnect();
                     if (location != null) { urlStr = location; continue; }
                 }
-                if (code < 200 || code >= 300) {
-                    android.util.Log.w("AlarmActivity", "deleteTaskSync 실패 HTTP " + code);
+                if (code >= 200 && code < 300) {
+                    // 서버 삭제 성공 — 혹시 남아 있던 pending도 정리.
+                    prefs.edit().remove("pending_delete_id").remove("pending_delete_type").apply();
+                } else {
+                    android.util.Log.w("AlarmActivity", "deleteTaskSync 실패 HTTP " + code + " — pending 기록");
+                    setPendingDelete(prefs, taskId, type);
                 }
                 conn.disconnect();
                 break;
             }
-        } catch (Exception e) { e.printStackTrace(); }
+        } catch (Exception e) {
+            e.printStackTrace();
+            setPendingDelete(prefs, taskId, type);
+        }
     }
 
     @Override
@@ -973,17 +1117,30 @@ public class AlarmActivity extends Activity {
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 
 public class AlarmDeleteReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         String taskId = intent.getStringExtra("taskId");
         if (taskId == null) return;
+        final Context appContext = context.getApplicationContext();
         new Thread(() -> {
             try {
-                String urlStr = "https://growthpad.simssijjang.workers.dev/api/tasks?id=" + taskId;
+                // JS가 SharedPreferences("iwmemo_storage")/"auth_token"에 동기화해 둔 JWT 사용.
+                // 없으면 서버가 401만 반환하므로 시도 자체를 skip (조용한 무동작 방지).
+                SharedPreferences prefs = appContext
+                    .getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE);
+                String token = prefs.getString("auth_token", null);
+                if (token == null || token.isEmpty()) {
+                    android.util.Log.w("AlarmDeleteReceiver", "auth_token 없음 — DELETE skip");
+                    return;
+                }
+                String urlStr = "https://growthpad.simssijjang.workers.dev/api/tasks?id="
+                    + URLEncoder.encode(taskId, "UTF-8");
                 int maxRedirects = 5;
                 for (int i = 0; i < maxRedirects; i++) {
                     URL url = new URL(urlStr);
@@ -993,18 +1150,25 @@ public class AlarmDeleteReceiver extends BroadcastReceiver {
                     conn.setConnectTimeout(10000);
                     conn.setReadTimeout(10000);
                     conn.setRequestProperty("Content-Type", "application/json");
+                    // 토큰 유출 방지: 동일 API 호스트로 가는 요청에만 Authorization 부착
+                    if ("growthpad.simssijjang.workers.dev".equals(url.getHost())) {
+                        conn.setRequestProperty("Authorization", "Bearer " + token);
+                    }
                     int code = conn.getResponseCode();
                     if (code == 301 || code == 302 || code == 307 || code == 308) {
                         String location = conn.getHeaderField("Location");
                         conn.disconnect();
                         if (location != null) { urlStr = location; continue; }
                     }
+                    if (code < 200 || code >= 300) {
+                        android.util.Log.w("AlarmDeleteReceiver", "DELETE 실패 HTTP " + code);
+                    }
                     conn.disconnect();
                     break;
                 }
             } catch (Exception e) { e.printStackTrace(); }
         }).start();
-        Intent dismissIntent = new Intent("${pkg}.DISMISS_ALARM");
+        Intent dismissIntent = new Intent("com.growthpad.app.DISMISS_ALARM");
         context.sendBroadcast(dismissIntent);
     }
 }
@@ -1038,13 +1202,17 @@ public class AlarmDeleteReceiver extends BroadcastReceiver {
     @Suppress("DEPRECATION")
     overridePendingTransition(0, 0)
 
-    // 화면 해제 시 자동 실행 서비스
+    // 화면 해제 시 자동 실행 서비스 — 사용자가 설정에서 끈 경우(auto_launch_enabled=false)는
+    // 시작하지 않는다(설정 존중). 기본값은 켜짐(core UX).
     try {
-      val serviceIntent = android.content.Intent(this, ScreenUnlockService::class.java)
-      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-        startForegroundService(serviceIntent)
-      } else {
-        startService(serviceIntent)
+      val prefs = getSharedPreferences("iwmemo_storage", android.content.Context.MODE_PRIVATE)
+      if (prefs.getString("auto_launch_enabled", "true") != "false") {
+        val serviceIntent = android.content.Intent(this, ScreenUnlockService::class.java)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+          startForegroundService(serviceIntent)
+        } else {
+          startService(serviceIntent)
+        }
       }
     } catch (e: Exception) {
       e.printStackTrace()
@@ -1052,6 +1220,24 @@ public class AlarmDeleteReceiver extends BroadcastReceiver {
             );
             fs.writeFileSync(ktFile, content);
           }
+        }
+        // 터치 먹통 진단·복구용 window focus 추적 — resumed인데 focus가 없는 상태가 지속되면
+        // ScreenUnlockService가 표적 복구 relaunch를 결정한다. onCreate 패치와 별도 키로 삽입.
+        if (!content.includes('onWindowFocusChanged')) {
+          content = content.replace(
+            'override fun getMainComponentName(): String = "main"',
+            `// 터치 먹통 진단·복구의 핵심 신호: resumed인데 window focus가 없는 상태가 지속되면
+  // 잠금화면 위 표시가 입력을 못 받는 먹통 — ScreenUnlockService가 이 값을 보고
+  // 표적 복구 relaunch를 결정한다. lifecycle(resumed/paused)과 focus는 별개 신호.
+  override fun onWindowFocusChanged(hasFocus: Boolean) {
+    super.onWindowFocusChanged(hasFocus)
+    ScreenUnlockService.mainActivityHasFocus = hasFocus
+    android.util.Log.d("ScreenUnlockSvc", "MainActivity windowFocus=" + hasFocus)
+  }
+
+  override fun getMainComponentName(): String = "main"`
+          );
+          fs.writeFileSync(ktFile, content);
         }
       }
 
@@ -1087,6 +1273,9 @@ public class AlarmDeleteReceiver extends BroadcastReceiver {
       override fun onActivityResumed(activity: android.app.Activity) {
         if (activity is MainActivity) {
           ScreenUnlockService.mainActivityResumed = true
+          // focus 유예(FOCUS_SETTLE_MS) 기준점 — resume 후 focus가 계속 없으면 먹통 판정.
+          ScreenUnlockService.mainActivityResumedAt = android.os.SystemClock.elapsedRealtime()
+          // 첫 resume = JS 번들 cold init 완료 → cold-init 가드 무효화(정상 자동표시 회복).
           ScreenUnlockService.mainActivityCreatedAt = 0
         }
       }
@@ -1095,10 +1284,35 @@ public class AlarmDeleteReceiver extends BroadcastReceiver {
           ScreenUnlockService.mainActivityResumed = false
         }
       }
-      override fun onActivityStarted(activity: android.app.Activity) {}
-      override fun onActivityStopped(activity: android.app.Activity) {}
+      override fun onActivityStarted(activity: android.app.Activity) {
+        if (activity is MainActivity) {
+          // onStart~onStop = 화면에 보이거나 전환 중. 이 동안의 재launch는 focus를 흔든다.
+          ScreenUnlockService.mainActivityStarted = true
+        }
+        if (activity is AlarmActivity) {
+          // 알람이 떠 있는 동안 자동표시 launch 금지(알람 파괴/z-order 경합 방지).
+          ScreenUnlockService.alarmActivityVisible = true
+        }
+      }
+      override fun onActivityStopped(activity: android.app.Activity) {
+        if (activity is MainActivity) {
+          ScreenUnlockService.mainActivityStarted = false
+        }
+        if (activity is AlarmActivity) {
+          ScreenUnlockService.alarmActivityVisible = false
+        }
+      }
       override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: android.os.Bundle) {}
-      override fun onActivityDestroyed(activity: android.app.Activity) {}
+      override fun onActivityDestroyed(activity: android.app.Activity) {
+        // 안전망: 비정상 종료 경로에서도 상태가 고착되지 않게 리셋.
+        if (activity is MainActivity) {
+          ScreenUnlockService.mainActivityStarted = false
+          ScreenUnlockService.mainActivityResumed = false
+        }
+        if (activity is AlarmActivity) {
+          ScreenUnlockService.alarmActivityVisible = false
+        }
+      }
     })`
           );
           fs.writeFileSync(appKtFile, content);

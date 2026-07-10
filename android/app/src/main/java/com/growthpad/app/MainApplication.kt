@@ -62,6 +62,8 @@ class MainApplication : Application(), ReactApplication {
       override fun onActivityResumed(activity: android.app.Activity) {
         if (activity is MainActivity) {
           ScreenUnlockService.mainActivityResumed = true
+          // focus 유예(FOCUS_SETTLE_MS) 기준점 — resume 후 focus가 계속 없으면 먹통 판정.
+          ScreenUnlockService.mainActivityResumedAt = android.os.SystemClock.elapsedRealtime()
           // 첫 resume = JS 번들 cold init 완료 → cold-init 가드 무효화(정상 자동표시 회복).
           ScreenUnlockService.mainActivityCreatedAt = 0
         }
@@ -71,10 +73,35 @@ class MainApplication : Application(), ReactApplication {
           ScreenUnlockService.mainActivityResumed = false
         }
       }
-      override fun onActivityStarted(activity: android.app.Activity) {}
-      override fun onActivityStopped(activity: android.app.Activity) {}
+      override fun onActivityStarted(activity: android.app.Activity) {
+        if (activity is MainActivity) {
+          // onStart~onStop = 화면에 보이거나 전환 중. 이 동안의 재launch는 focus를 흔든다.
+          ScreenUnlockService.mainActivityStarted = true
+        }
+        if (activity is AlarmActivity) {
+          // 알람이 떠 있는 동안 자동표시 launch 금지(알람 파괴/z-order 경합 방지).
+          ScreenUnlockService.alarmActivityVisible = true
+        }
+      }
+      override fun onActivityStopped(activity: android.app.Activity) {
+        if (activity is MainActivity) {
+          ScreenUnlockService.mainActivityStarted = false
+        }
+        if (activity is AlarmActivity) {
+          ScreenUnlockService.alarmActivityVisible = false
+        }
+      }
       override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: android.os.Bundle) {}
-      override fun onActivityDestroyed(activity: android.app.Activity) {}
+      override fun onActivityDestroyed(activity: android.app.Activity) {
+        // 안전망: 비정상 종료 경로에서도 상태가 고착되지 않게 리셋.
+        if (activity is MainActivity) {
+          ScreenUnlockService.mainActivityStarted = false
+          ScreenUnlockService.mainActivityResumed = false
+        }
+        if (activity is AlarmActivity) {
+          ScreenUnlockService.alarmActivityVisible = false
+        }
+      }
     })
   }
 

@@ -15,6 +15,10 @@ public class BootReceiver extends BroadcastReceiver {
             || "com.htc.intent.action.QUICKBOOT_POWERON".equals(action);
         if (isBoot) {
             try {
+                // 사용자가 자동실행을 꺼 뒀으면 부팅 시에도 시작하지 않는다(설정 존중).
+                String enabled = context.getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE)
+                    .getString("auto_launch_enabled", "true");
+                if ("false".equals(enabled)) return;
                 Intent serviceIntent = new Intent(context, ScreenUnlockService.class);
                 // 부팅 직후엔 JS 번들 cold init 중 launch 깜빡임을 막기 위해 가드 무장 요청
                 serviceIntent.putExtra("cold_start_guard", true);

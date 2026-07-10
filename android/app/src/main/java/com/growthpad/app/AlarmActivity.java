@@ -47,7 +47,10 @@ public class AlarmActivity extends Activity {
 
         String taskId = getIntent().getStringExtra("taskId");
         String title = getIntent().getStringExtra("title");
+        String alarmType = getIntent().getStringExtra("type");
         if (title == null) title = "알람";
+        if (alarmType == null) alarmType = "task";
+        final String fType = alarmType;
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -87,7 +90,7 @@ public class AlarmActivity extends Activity {
             deleteBtn.setPadding(48, 24, 48, 24);
             final String fTaskId = taskId;
             deleteBtn.setOnClickListener(v -> {
-                new Thread(() -> deleteTaskSync(fTaskId)).start();
+                new Thread(() -> deleteTaskSync(fTaskId, fType)).start();
                 stopAlarm();
                 finish();
             });
@@ -132,15 +135,25 @@ public class AlarmActivity extends Activity {
         try { if (vibrator != null) vibrator.cancel(); } catch (Exception e) {}
     }
 
-    private void deleteTaskSync(String taskId) {
+    // 네이티브 DELETE가 실패/skip되면 pending_delete_*에 기록 — JS(processPendingDelete)가
+    // 앱 복귀 시 인증된 api 클라이언트로 이어서 지운다(폴백 큐). 성공 시엔 큐를 비운다.
+    private void setPendingDelete(SharedPreferences prefs, String taskId, String type) {
+        prefs.edit()
+            .putString("pending_delete_id", taskId)
+            .putString("pending_delete_type", type == null ? "task" : type)
+            .apply();
+    }
+
+    private void deleteTaskSync(String taskId, String type) {
+        SharedPreferences prefs = getApplicationContext()
+            .getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE);
         try {
             // JS가 SharedPreferences("iwmemo_storage")/"auth_token"에 동기화해 둔 JWT 사용.
             // 토큰이 없으면 서버가 401만 반환하므로 시도 자체를 skip (조용한 무동작 방지).
-            SharedPreferences prefs = getApplicationContext()
-                .getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE);
             String token = prefs.getString("auth_token", null);
             if (token == null || token.isEmpty()) {
-                android.util.Log.w("AlarmActivity", "deleteTaskSync: auth_token 없음 — DELETE skip");
+                android.util.Log.w("AlarmActivity", "deleteTaskSync: auth_token 없음 — pending 기록 후 skip");
+                setPendingDelete(prefs, taskId, type);
                 return;
             }
             String urlStr = "https://growthpad.simssijjang.workers.dev/api/tasks?id="
@@ -164,13 +177,20 @@ public class AlarmActivity extends Activity {
                     conn.disconnect();
                     if (location != null) { urlStr = location; continue; }
                 }
-                if (code < 200 || code >= 300) {
-                    android.util.Log.w("AlarmActivity", "deleteTaskSync 실패 HTTP " + code);
+                if (code >= 200 && code < 300) {
+                    // 서버 삭제 성공 — 혹시 남아 있던 pending도 정리.
+                    prefs.edit().remove("pending_delete_id").remove("pending_delete_type").apply();
+                } else {
+                    android.util.Log.w("AlarmActivity", "deleteTaskSync 실패 HTTP " + code + " — pending 기록");
+                    setPendingDelete(prefs, taskId, type);
                 }
                 conn.disconnect();
                 break;
             }
-        } catch (Exception e) { e.printStackTrace(); }
+        } catch (Exception e) {
+            e.printStackTrace();
+            setPendingDelete(prefs, taskId, type);
+        }
     }
 
     @Override

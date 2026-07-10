@@ -349,7 +349,11 @@ class ApiClient {
         throw err;
       }
 
-      return response.json();
+      // 204/빈 바디 응답(DELETE 등)에 json()을 시도하면 파싱 에러로 성공이 실패처럼
+      // 보인다 → 빈 응답은 undefined로 정상 반환.
+      if (response.status === 204) return undefined as T;
+      const text = await response.text();
+      return (text ? JSON.parse(text) : undefined) as T;
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         const timeoutErr = new Error(

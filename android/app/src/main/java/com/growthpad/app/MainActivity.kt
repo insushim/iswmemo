@@ -39,17 +39,30 @@ class MainActivity : ReactActivity() {
     @Suppress("DEPRECATION")
     overridePendingTransition(0, 0)
 
-    // 화면 해제 시 자동 실행 서비스
+    // 화면 해제 시 자동 실행 서비스 — 사용자가 설정에서 끈 경우(auto_launch_enabled=false)는
+    // 시작하지 않는다(설정 존중). 기본값은 켜짐(core UX).
     try {
-      val serviceIntent = android.content.Intent(this, ScreenUnlockService::class.java)
-      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-        startForegroundService(serviceIntent)
-      } else {
-        startService(serviceIntent)
+      val prefs = getSharedPreferences("iwmemo_storage", android.content.Context.MODE_PRIVATE)
+      if (prefs.getString("auto_launch_enabled", "true") != "false") {
+        val serviceIntent = android.content.Intent(this, ScreenUnlockService::class.java)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+          startForegroundService(serviceIntent)
+        } else {
+          startService(serviceIntent)
+        }
       }
     } catch (e: Exception) {
       e.printStackTrace()
     }
+  }
+
+  // 터치 먹통 진단·복구의 핵심 신호: resumed인데 window focus가 없는 상태가 지속되면
+  // 잠금화면 위 표시가 입력을 못 받는 먹통 — ScreenUnlockService가 이 값을 보고
+  // 표적 복구 relaunch를 결정한다. lifecycle(resumed/paused)과 focus는 별개 신호.
+  override fun onWindowFocusChanged(hasFocus: Boolean) {
+    super.onWindowFocusChanged(hasFocus)
+    ScreenUnlockService.mainActivityHasFocus = hasFocus
+    android.util.Log.d("ScreenUnlockSvc", "MainActivity windowFocus=" + hasFocus)
   }
 
   /**

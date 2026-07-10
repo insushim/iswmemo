@@ -31,6 +31,10 @@ public class ScreenUnlockService extends Service {
     private static final long SCREEN_ON_LAUNCH_DELAY_MS = 350;
     private static final long USER_PRESENT_LAUNCH_DELAY_MS = 100;
     private static final long SCREEN_ON_WAKELOCK_MS = 2500;
+    // resume 직후 keyguard가 window focus를 아직 안 넘긴 정상 전환과, focus를 영영 못 받는
+    // 먹통 상태를 구분하는 유예. 유예 안이면 재확인만 예약하고, 지나면 복구 relaunch.
+    private static final long FOCUS_SETTLE_MS = 800;
+    private static final long FOCUS_RECHECK_MS = 1000;
     // 서비스 시작 직후(업데이트 설치/부팅 등) N초 동안 auto-launch 억제 — JS 번들 cold init 충돌 방지
     private static final long SERVICE_COLD_START_GUARD_MS = 15000;
     private BroadcastReceiver screenReceiver;
@@ -56,6 +60,17 @@ public class ScreenUnlockService extends Service {
     // FOREGROUND로 못 잡던 false-negative(→ 불필요한 재launch → window focus 흔들림 → 터치 먹통)를 대체.
     public static volatile boolean mainActivityResumed = false;
     public static volatile long mainActivityCreatedAt = 0;
+    // onStart~onStop 사이(화면에 보이거나 전환 중). resume 직전 과도기에 불필요한
+    // 재launch(→ z-order/focus 흔들림 → 터치 먹통)를 막는 가드로 쓴다.
+    public static volatile boolean mainActivityStarted = false;
+    // MainActivity.onWindowFocusChanged로 갱신. resumed인데 focus가 없는 상태가
+    // 지속되면 터치가 먹지 않는 먹통 상태 → 이때만 표적 복구 relaunch를 허용한다.
+    public static volatile boolean mainActivityHasFocus = true;
+    // 마지막 onResume 시각(elapsedRealtime). focus 유예(FOCUS_SETTLE_MS) 기준점.
+    public static volatile long mainActivityResumedAt = 0;
+    // AlarmActivity가 떠 있는 동안 자동표시 launch 금지 — 울리는 알람 위로 MainActivity를
+    // 끌어올리면 singleTask clear-top으로 알람이 파괴되거나 z-order 경합이 생긴다.
+    public static volatile boolean alarmActivityVisible = false;
 
     @Override
     public void onCreate() {
@@ -217,10 +232,39 @@ public class ScreenUnlockService extends Service {
         } catch (Exception e) {}
         // 전화 수신/통화 중이면 실행하지 않음
         if (isPhoneCallActive(context)) { android.util.Log.d(TAG, "skip: phone call active"); return; }
-        // 이미 사용자 눈앞에 resume 상태로 떠 있으면 재launch 불필요.
+        // 사용자가 자동표시를 끈 경우(설정 토글) 전 경로 중단. 기본값은 켜짐(core UX).
+        try {
+            String enabled = context.getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE)
+                .getString("auto_launch_enabled", "true");
+            if ("false".equals(enabled)) { android.util.Log.d(TAG, "skip: auto-launch disabled by user"); return; }
+        } catch (Exception e) {}
+        // 알람(AlarmActivity)이 떠 있으면 자동표시 금지 — 알람이 화면을 깨우며 SCREEN_ON을
+        // 유발하므로, 여기서 막지 않으면 울리는 알람 위로 MainActivity가 올라와
+        // singleTask clear-top으로 알람을 파괴하거나 z-order/focus 경합을 일으킨다.
+        if (alarmActivityVisible) { android.util.Log.d(TAG, "skip: AlarmActivity visible"); return; }
+        // 이미 사용자 눈앞에 resume + window focus 상태로 떠 있으면 재launch 불필요.
         // process-내 정확 판정 → 잠금화면 위 표시를 못 잡던 ActivityManager false-negative로 인한
         // 불필요한 재launch(→ window focus 흔들림 → 터치 먹통)를 근본 차단.
-        if (mainActivityResumed) { android.util.Log.d(TAG, "skip: MainActivity already resumed"); return; }
+        boolean focusLost = mainActivityResumed && !mainActivityHasFocus;
+        if (mainActivityResumed && mainActivityHasFocus) { android.util.Log.d(TAG, "skip: MainActivity resumed+focused"); return; }
+        if (focusLost) {
+            // resume 직후 keyguard가 focus를 아직 안 넘긴 정상 전환일 수 있다 → 유예 안이면
+            // 재확인만 예약. 유예를 넘겨도 focus가 없으면 "화면은 보이는데 터치가 안 먹는"
+            // 먹통 상태로 보고 표적 복구 relaunch로 focus 재협상을 강제한다(7way 수렴 발견).
+            long sinceResume = android.os.SystemClock.elapsedRealtime() - mainActivityResumedAt;
+            if (sinceResume < FOCUS_SETTLE_MS) {
+                android.util.Log.d(TAG, "focus settling (" + sinceResume + "ms) — recheck scheduled");
+                handler.removeCallbacks(launchRunnable);
+                handler.postDelayed(launchRunnable, FOCUS_RECHECK_MS);
+                return;
+            }
+            android.util.Log.d(TAG, "recovery: resumed without focus for " + sinceResume + "ms");
+        } else if (mainActivityStarted) {
+            // 보이는 상태로 resume 전환 중(화면 off→on 직후 등). 자연 resume이 곧 일어나므로
+            // 재launch하면 오히려 task 끌어올리기로 focus를 흔든다 → skip.
+            android.util.Log.d(TAG, "skip: MainActivity visible, resume in transit");
+            return;
+        }
         // MainActivity가 생성됐지만 아직 첫 resume 전(JS 번들 cold init 중)이면 재진입 금지.
         // 첫 resume 완료 시 콜백이 mainActivityCreatedAt=0으로 리셋하므로, 초기화가 끝난 뒤엔
         // 이 가드가 걸리지 않아 "잠깐 보고 바로 화면 껐다 켜기" 같은 정상 패턴의 자동표시(core UX)를
@@ -230,12 +274,13 @@ public class ScreenUnlockService extends Service {
             android.util.Log.d(TAG, "skip: MainActivity cold-init in progress");
             return;
         }
-        // 이미 앱이 포그라운드면 재런치 skip (보조 판정)
-        if (isAppInForeground(context)) { android.util.Log.d(TAG, "skip: app already foreground"); return; }
+        // 이미 앱이 포그라운드면 재런치 skip (보조 판정 — focus 복구 경로에서는 건너뜀:
+        // resumed 상태라 importance가 FOREGROUND로 잡혀 복구가 막히기 때문)
+        if (!focusLost && isAppInForeground(context)) { android.util.Log.d(TAG, "skip: app already foreground"); return; }
         // 디바운싱: 마지막 런치로부터 2.5초 이내면 무시
         if (now - lastLaunchTime < LAUNCH_DEBOUNCE_MS) { android.util.Log.d(TAG, "skip: debounce"); return; }
         lastLaunchTime = now;
-        android.util.Log.d(TAG, "launch: MainActivity (auto-show)");
+        android.util.Log.d(TAG, focusLost ? "launch: MainActivity (focus recovery)" : "launch: MainActivity (auto-show)");
         try {
             Intent launchIntent = new Intent(context, MainActivity.class);
             // NO_ANIMATION: keyguard 위에 진입할 때 window 슬라이드 애니메이션 제거 → 깜빡임 완화.
@@ -268,9 +313,14 @@ public class ScreenUnlockService extends Service {
     }
     @Override public void onTaskRemoved(Intent rootIntent) {
         try {
-            Intent restartIntent = new Intent(this, ScreenUnlockService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(restartIntent);
-            else startService(restartIntent);
+            // 사용자가 자동실행을 꺼 뒀으면 부활하지 않는다(설정 존중).
+            String enabled = getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE)
+                .getString("auto_launch_enabled", "true");
+            if (!"false".equals(enabled)) {
+                Intent restartIntent = new Intent(this, ScreenUnlockService.class);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(restartIntent);
+                else startService(restartIntent);
+            }
         } catch (Exception e) {}
         super.onTaskRemoved(rootIntent);
     }

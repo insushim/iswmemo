@@ -521,7 +521,12 @@ export default function SimpleHomeScreen() {
   };
 
   const closeAllSwipeables = () => {
-    swipeableRefs.current.forEach((ref) => ref?.close());
+    // unmount된 인스턴스의 close()가 던져도 제스처 콜백(onLongPress)이 죽지 않게 방어
+    swipeableRefs.current.forEach((ref) => {
+      try {
+        ref?.close();
+      } catch {}
+    });
   };
 
   const renderTaskItem = ({
@@ -539,6 +544,7 @@ export default function SimpleHomeScreen() {
         <Swipeable
           ref={(ref) => {
             if (ref) swipeableRefs.current.set(t.id, ref);
+            else swipeableRefs.current.delete(t.id);
           }}
           renderLeftActions={renderLeftActions(t)}
           renderRightActions={renderRightActions(t)}
@@ -573,7 +579,7 @@ export default function SimpleHomeScreen() {
               closeAllSwipeables();
               drag();
             }}
-            enabled={!isActive}
+            disabled={isActive}
           >
             <View style={styles.taskContent}>
               <Text

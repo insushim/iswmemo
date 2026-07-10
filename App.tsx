@@ -317,10 +317,16 @@ export default function App() {
     };
 
     // 앱 초기화 완료 후 권한 요청 (splash 숨김 + 네비게이션 안정화 대기)
+    // cancelled 플래그: effect 재실행(로그인 토글) 시 이전 setTimeout 체인이 살아남아
+    // 권한 Alert 체인이 중복 실행되던 문제 방지 — handle.cancel()은 이 체인을 못 끊는다.
+    let cancelled = false;
     const waitAndRequest = () => {
       const check = () => {
+        if (cancelled) return;
         if (appReady.current) {
-          setTimeout(requestAllPermissions, 1500);
+          setTimeout(() => {
+            if (!cancelled) requestAllPermissions();
+          }, 1500);
         } else {
           setTimeout(check, 500);
         }
@@ -328,7 +334,10 @@ export default function App() {
       check();
     };
     const handle = InteractionManager.runAfterInteractions(waitAndRequest);
-    return () => handle.cancel();
+    return () => {
+      cancelled = true;
+      handle.cancel();
+    };
   }, [isAuthenticated]);
 
   // 초기화 전에는 splash 배경과 동일한 색상 유지 → 흰 flash 방지
