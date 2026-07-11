@@ -52,7 +52,7 @@ export default function GoalBanner() {
         },
       ]}
     >
-      {/* 시계(좌) + 날짜/기온·날씨아이콘 2줄(flex:1) + 미세먼지(고정) + 배터리(고정) */}
+      {/* 시계(좌) + 날짜/기온·날씨아이콘 2줄(flex:1) + 우측 2줄 블록(미세먼지·배터리/출처) */}
       <View style={styles.mainRow}>
         {/* 시계 */}
         <Text style={[styles.clock, { color: colors.foreground }]}>
@@ -75,84 +75,94 @@ export default function GoalBanner() {
             </Text>
           )}
         </View>
-        {/* 미세먼지: 고정 */}
-        {weather && (
-          <View style={styles.dustRow}>
-            <Text
-              style={[styles.dustText, { color: getDustColor10(weather.pm10) }]}
-            >
-              미세{weather.pm10}
-              {getDustLevel10(weather.pm10)}
-            </Text>
-            <Text
-              style={[
-                styles.dustText,
-                { color: getDustColor(weather.pm25), marginLeft: 3 },
-              ]}
-            >
-              초미세{weather.pm25}
-              {getDustLevel(weather.pm25)}
-            </Text>
+        {/* 우측 2줄 블록: 윗줄 미세먼지+배터리 / 아랫줄 출처 —
+            출처가 전용 행을 차지하지 않게 메인 행 안으로(왼쪽 여백 낭비 제거) */}
+        <View style={styles.rightBlock}>
+          <View style={styles.rightTopRow}>
+            {weather && (
+              <View style={styles.dustRow}>
+                <Text
+                  style={[
+                    styles.dustText,
+                    { color: getDustColor10(weather.pm10) },
+                  ]}
+                >
+                  미세{weather.pm10}
+                  {getDustLevel10(weather.pm10)}
+                </Text>
+                <Text
+                  style={[
+                    styles.dustText,
+                    { color: getDustColor(weather.pm25), marginLeft: 3 },
+                  ]}
+                >
+                  초미세{weather.pm25}
+                  {getDustLevel(weather.pm25)}
+                </Text>
+              </View>
+            )}
+            {/* 배터리: 아이콘 (작게) */}
+            {battery !== null && (
+              <View style={styles.batteryWrap}>
+                <View
+                  style={[
+                    styles.batteryBody,
+                    {
+                      borderColor:
+                        battery <= 20
+                          ? "#ef4444"
+                          : battery <= 50
+                            ? "#f97316"
+                            : colors.mutedForeground,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.batteryFill,
+                      {
+                        width: `${battery}%`,
+                        backgroundColor:
+                          battery <= 20
+                            ? "#ef4444"
+                            : battery <= 50
+                              ? "#f97316"
+                              : "#22c55e",
+                      },
+                    ]}
+                  />
+                  <Text style={styles.batteryLabel}>{battery}%</Text>
+                </View>
+                <View
+                  style={[
+                    styles.batteryNub,
+                    {
+                      backgroundColor:
+                        battery <= 20
+                          ? "#ef4444"
+                          : battery <= 50
+                            ? "#f97316"
+                            : colors.mutedForeground,
+                    },
+                  ]}
+                />
+              </View>
+            )}
           </View>
-        )}
-        {/* 배터리: 아이콘 (작게) */}
-        {battery !== null && (
-          <View style={styles.batteryWrap}>
-            <View
-              style={[
-                styles.batteryBody,
-                {
-                  borderColor:
-                    battery <= 20
-                      ? "#ef4444"
-                      : battery <= 50
-                        ? "#f97316"
-                        : colors.mutedForeground,
-                },
-              ]}
+          {/* 현재 위치 + 출처 + 측정소명 — 미세먼지 바로 아래 우측 정렬 */}
+          {weather && (
+            <Text
+              style={[styles.sourceText, { color: colors.mutedForeground }]}
+              numberOfLines={1}
             >
-              <View
-                style={[
-                  styles.batteryFill,
-                  {
-                    width: `${battery}%`,
-                    backgroundColor:
-                      battery <= 20
-                        ? "#ef4444"
-                        : battery <= 50
-                          ? "#f97316"
-                          : "#22c55e",
-                  },
-                ]}
-              />
-              <Text style={styles.batteryLabel}>{battery}%</Text>
-            </View>
-            <View
-              style={[
-                styles.batteryNub,
-                {
-                  backgroundColor:
-                    battery <= 20
-                      ? "#ef4444"
-                      : battery <= 50
-                        ? "#f97316"
-                        : colors.mutedForeground,
-                },
-              ]}
-            />
-          </View>
-        )}
+              {weather.locationName ? `📍${weather.locationName} · ` : ""}
+              {weather.stationName ? `${weather.stationName} · ` : ""}
+              {weather.dustSource}
+            </Text>
+          )}
+        </View>
       </View>
       {/* 기상특보(폭염 등) 줄은 표시하지 않는다 — 한 줄을 통째로 차지해 제거(2026-07-11 사용자 요청) */}
-
-      {/* 현재 위치 + 출처 + 측정소명 */}
-      {weather && (
-        <Text style={[styles.sourceText, { color: colors.mutedForeground }]}>
-          {weather.locationName ? `📍${weather.locationName} · ` : ""}
-          {weather.stationName ? `${weather.stationName} · ` : ""}
-          {weather.dustSource}
-        </Text>
-      )}
 
       {/* 고정 목표 - 한 줄에 2개 */}
       {pinnedGoals.length > 0 ? (
@@ -225,10 +235,17 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     lineHeight: 16,
   },
+  rightBlock: {
+    marginLeft: 5,
+    alignItems: "flex-end",
+  },
+  rightTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   dustRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginLeft: 5,
   },
   dustText: {
     fontSize: 13,
@@ -274,7 +291,8 @@ const styles = StyleSheet.create({
     fontSize: 7,
     opacity: 0.4,
     textAlign: "right",
-    marginBottom: 2,
+    marginTop: 1,
+    maxWidth: 180, // 좁은 화면에서 좌측 날짜/기온 블록을 밀어내지 않게 캡
   },
   goalsGrid: {
     flexDirection: "row",
