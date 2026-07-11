@@ -291,7 +291,8 @@ const styles = StyleSheet.create({
     fontSize: 7,
     opacity: 0.4,
     textAlign: "right",
-    marginTop: 1,
+    // 미세먼지 줄과의 간격 — 시계(행 최고높이)보다 블록이 낮아 행 높이·목표 위치는 불변
+    marginTop: 6,
     maxWidth: 180, // 좁은 화면에서 좌측 날짜/기온 블록을 밀어내지 않게 캡
   },
   goalsGrid: {
