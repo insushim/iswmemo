@@ -122,7 +122,7 @@ export default function SettingsScreen() {
       setShowE2EE(false);
       Alert.alert(
         "암호화 설정됨",
-        "메모·할일·일정이 이 암호로 암호화됩니다.\n\nSchoolDesk(컴퓨터)에서도 같은 암호를 입력하세요.\n(웹은 아직 암호화 미지원 — 켜면 웹에서는 해당 내용이 보이지 않습니다)\n\n⚠️ 암호를 잊으면 암호화된 데이터를 풀 수 없습니다. 종이에 적어 보관하세요.",
+        "메모·할일·일정이 이 암호로 암호화됩니다.\n\nSchoolDesk(컴퓨터)·웹에서도 같은 암호를 입력하세요.\n(웹은 설정 → 데이터 암호화에서 입력)\n\n⚠️ 암호를 잊으면 암호화된 데이터를 풀 수 없습니다. 종이에 적어 보관하세요.",
       );
     } catch (e) {
       Alert.alert("실패", "암호화 설정에 실패했습니다.");
@@ -581,8 +581,8 @@ export default function SettingsScreen() {
             <View style={{ padding: 20, gap: 12 }}>
               <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 19 }}>
                 로그인 비밀번호와 <Text style={{ fontWeight: "700" }}>다른</Text> 별도의
-                암호를 정하세요. 이 암호로 메모·할일·일정을 잠급니다. SchoolDesk(컴퓨터)에서도
-                같은 암호를 입력해야 내용이 보입니다. (웹은 아직 암호화 미지원)
+                암호를 정하세요. 이 암호로 메모·할일·일정을 잠급니다. SchoolDesk(컴퓨터)·웹에서도
+                같은 암호를 입력해야 내용이 보입니다.
               </Text>
               <TextInput
                 placeholder="암호화 암호 (8자 이상)"
