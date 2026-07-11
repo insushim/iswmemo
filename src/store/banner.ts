@@ -57,16 +57,21 @@ export const useBannerStore = create<BannerState>((set, get) => ({
         .catch(() => {});
     pollBattery();
     const batteryInterval = setInterval(pollBattery, 30000);
-    const batterySub = Battery.addBatteryLevelListener(({ batteryLevel }) => {
-      if (batteryLevel >= 0) set({ battery: Math.round(batteryLevel * 100) });
-    });
+    // 웹(iOS Safari 등)은 배터리 이벤트 미지원으로 등록이 throw할 수 있음 —
+    // 실패 시 배터리 표시만 생략(battery=null 유지)하고 나머지 배너는 정상 동작.
+    let batterySub: { remove: () => void } | null = null;
+    try {
+      batterySub = Battery.addBatteryLevelListener(({ batteryLevel }) => {
+        if (batteryLevel >= 0) set({ battery: Math.round(batteryLevel * 100) });
+      });
+    } catch {}
 
     cleanup = () => {
       clearInterval(weatherInterval);
       appStateSub.remove();
       stopLocationWatch();
       clearInterval(batteryInterval);
-      batterySub.remove();
+      batterySub?.remove();
     };
   },
 }));

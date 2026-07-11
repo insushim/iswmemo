@@ -315,14 +315,15 @@ class ApiClient {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
+    const { body: rawBody, ...restOptions } = options;
     const config: RequestInit = {
-      ...options,
+      ...restOptions,
       headers,
       signal: controller.signal,
     };
 
-    if (options.body && typeof options.body === "object") {
-      config.body = JSON.stringify(options.body);
+    if (rawBody && typeof rawBody === "object") {
+      config.body = JSON.stringify(rawBody);
     }
 
     const method = (options.method || "GET").toUpperCase();

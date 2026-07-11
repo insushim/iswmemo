@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import * as Location from "expo-location";
 import * as SecureStore from "expo-secure-store";
 import { API_URL } from "./config";
@@ -126,7 +127,12 @@ export async function startLocationWatch(onMove: () => void): Promise<void> {
         const newLat = loc.coords.latitude;
         const newLon = loc.coords.longitude;
 
-        // 역지오코딩으로 위치명 업데이트
+        // 역지오코딩으로 위치명 업데이트 (웹은 미지원 → 좌표 최근접 시도 추정)
+        if (Platform.OS === "web") {
+          lastWatchSido = sidoFromCoords(newLat, newLon);
+          lastWatchCity = "";
+          lastWatchDong = "";
+        } else
         try {
           const geocode = await Location.reverseGeocodeAsync({
             latitude: newLat,
@@ -192,7 +198,72 @@ export function getWatchedLocation(): {
   };
 }
 
+// 웹 폴백: expo-location 역지오코딩이 웹 미지원 → 시도를 좌표 최근접으로 추정.
+// ⚠️ 시도명 목록은 아래 getSidoName()의 매칭 규칙과 짝 — 행정구역 개편 시 둘 다 갱신.
+// 도(道)는 단일 중심점이면 경계 도시가 옆 시도로 붙는다(교차검증 실측: 천안이 세종에
+// 오분류) → 시도당 앵커 여러 개(주요 도시)로 최근접. 미세먼지 sidoName 선택용 정밀도.
+const SIDO_CENTROIDS: [string, number, number][] = [
+  ["서울", 37.57, 126.98],
+  ["부산", 35.18, 129.08],
+  ["대구", 35.87, 128.6],
+  ["인천", 37.46, 126.71],
+  ["광주", 35.16, 126.85],
+  ["대전", 36.35, 127.38],
+  ["울산", 35.54, 129.31],
+  ["세종", 36.48, 127.29],
+  ["경기", 37.29, 127.05], // 수원
+  ["경기", 37.74, 127.03], // 의정부(북부)
+  ["경기", 36.99, 127.09], // 평택(남부)
+  ["경기", 37.62, 126.72], // 김포(서부 — 인천에 붙는 것 방지)
+  ["강원", 37.88, 127.73], // 춘천
+  ["강원", 37.75, 128.9], // 강릉(영동)
+  ["강원", 37.34, 127.92], // 원주
+  ["강원", 37.18, 128.46], // 영월(남부 — 제천에 붙는 것 방지)
+  ["강원", 37.16, 128.99], // 태백(동남부 — 경북에 붙는 것 방지)
+  ["충북", 36.64, 127.49], // 청주
+  ["충북", 36.99, 127.93], // 충주
+  ["충북", 37.13, 128.19], // 제천
+  ["충북", 36.98, 128.37], // 단양(동북부 — 영월에 붙는 것 방지)
+  ["충남", 36.6, 126.66], // 홍성
+  ["충남", 36.82, 127.11], // 천안
+  ["충남", 36.78, 126.45], // 서산
+  ["충남", 36.19, 127.1], // 논산
+  ["전북", 35.82, 127.15], // 전주
+  ["전북", 35.97, 126.7], // 군산
+  ["전북", 35.42, 127.39], // 남원(동부)
+  ["전남", 34.99, 126.48], // 무안
+  ["전남", 34.95, 127.49], // 순천
+  ["전남", 34.76, 127.66], // 여수
+  ["전남", 34.81, 126.39], // 목포
+  ["경북", 36.57, 128.73], // 안동
+  ["경북", 36.02, 129.34], // 포항
+  ["경북", 36.12, 128.34], // 구미
+  ["경북", 35.86, 129.23], // 경주
+  ["경북", 36.41, 128.16], // 상주(서부 — 문경이 충주에 붙는 것 방지)
+  ["경북", 36.81, 128.62], // 영주(북부)
+  ["경북", 36.99, 129.4], // 울진(동해안 — 강원에 붙는 것 방지)
+  ["경남", 35.24, 128.69], // 창원
+  ["경남", 35.18, 128.11], // 진주(서부)
+  ["경남", 35.23, 128.89], // 김해
+  ["경남", 35.34, 129.04], // 양산(동부 — 부산에 붙는 것 방지)
+  ["제주", 33.5, 126.53],
+];
+
+function sidoFromCoords(lat: number, lon: number): string {
+  let best = "서울";
+  let bestD = Infinity;
+  for (const [name, sLat, sLon] of SIDO_CENTROIDS) {
+    const d = (lat - sLat) * (lat - sLat) + (lon - sLon) * (lon - sLon);
+    if (d < bestD) {
+      bestD = d;
+      best = name;
+    }
+  }
+  return best;
+}
+
 // GPS → 시도명 매핑 (reverse geocoding)
+// ⚠️ 위 SIDO_CENTROIDS(웹 좌표 폴백)와 시도명 집합이 짝 — 행정구역 개편 시 둘 다 갱신.
 function getSidoName(region: string, city: string = ""): string {
   // 행정통합으로 "전남광주통합특별시"처럼 두 시도명이 한 문자열에 공존 — 아래의
   // includes("광주")가 먼저 걸려 전남 시군이 광주로 오판된다(함평→광주 측정소 25km).
@@ -387,7 +458,12 @@ export async function getWeather(
             lat = newLat;
             lon = newLon;
 
-            // reverse geocode → 시도명 + 시군구명 + 읍면동명
+            // reverse geocode → 시도명 + 시군구명 + 읍면동명 (웹은 미지원 → 좌표 추정)
+            if (Platform.OS === "web") {
+              sido = sidoFromCoords(lat, lon);
+              city = "";
+              dong = "";
+            } else
             try {
               const geocode = await withTimeout(
                 Location.reverseGeocodeAsync({

@@ -68,7 +68,7 @@ export default function DashboardScreen() {
         (g: Goal) => g.status === 'IN_PROGRESS'
       ).slice(0, 3);
 
-      const routinesList = routinesData?.routines || routinesData || [];
+      const routinesList = (routinesData as { routines?: Routine[] })?.routines || (routinesData as Routine[]) || [];
 
       setTasks(todayTasksList);
       setHabits(habitsWithDates.slice(0, 5));

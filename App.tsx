@@ -35,22 +35,25 @@ import { emitSyncChanged } from "./src/lib/syncRefresh";
 const { AutoLaunchModule } = NativeModules;
 
 // 기한 알람만 포그라운드에서 표시 (나머지 알림은 모두 무시)
-Notifications.setNotificationHandler({
-  handleNotification: async (notification) => {
-    const channelId = notification.request.content.data?.channelId as
-      | string
-      | undefined;
-    const isAlarm =
-      channelId === "task_alarm_full" || channelId === "task-alarm";
-    return {
-      shouldShowAlert: isAlarm,
-      shouldPlaySound: isAlarm,
-      shouldSetBadge: false,
-      shouldShowBanner: isAlarm,
-      shouldShowList: isAlarm,
-    };
-  },
-});
+// 웹 번들에서는 expo-notifications 미지원 — 핸들러 등록 자체를 건너뜀
+if (Platform.OS !== "web") {
+  Notifications.setNotificationHandler({
+    handleNotification: async (notification) => {
+      const channelId = notification.request.content.data?.channelId as
+        | string
+        | undefined;
+      const isAlarm =
+        channelId === "task_alarm_full" || channelId === "task-alarm";
+      return {
+        shouldShowAlert: isAlarm,
+        shouldPlaySound: isAlarm,
+        shouldSetBadge: false,
+        shouldShowBanner: isAlarm,
+        shouldShowList: isAlarm,
+      };
+    },
+  });
+}
 
 SplashScreen.preventAutoHideAsync();
 
@@ -66,6 +69,7 @@ export default function App() {
   // setNotificationHandler 가 non-알람 알림 표시를 막아도 수신 리스너는 호출된다.
   useEffect(() => {
     primeSyncOriginId();
+    if (Platform.OS === "web") return; // 웹은 Expo 푸시 미수신 — 화면 복귀/포커스 refetch로 갱신
     const sub = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data as
         | { type?: string; entity?: string; origin?: string }

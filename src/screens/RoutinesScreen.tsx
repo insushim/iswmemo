@@ -19,7 +19,7 @@ import * as SecureStore from "expo-secure-store";
 import { useTheme } from "../lib/theme";
 import GoalBanner from "../components/GoalBanner";
 import { api } from "../lib/api";
-import { Routine, RoutineItem } from "../types";
+import { Routine, RoutineItem, RoutineType } from "../types";
 import VoiceInput from "../components/VoiceInput";
 import { Swipeable } from "react-native-gesture-handler";
 import DraggableFlatList, {
@@ -44,7 +44,7 @@ export default function RoutinesScreen() {
   const [showModal, setShowModal] = useState(false);
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
   const [newRoutineName, setNewRoutineName] = useState("");
-  const [selectedType, setSelectedType] = useState<string>("MORNING");
+  const [selectedType, setSelectedType] = useState<RoutineType>("MORNING");
   const [newItems, setNewItems] = useState<string[]>([""]);
   const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
   const hasLoadedRef = useRef(false);
@@ -147,7 +147,7 @@ export default function RoutinesScreen() {
                 ...r,
                 name,
                 type: selectedType,
-                items: items.length > 0 ? items : r.items,
+                items: items.length > 0 ? (items as Routine["items"]) : r.items,
               }
             : r,
         ),
