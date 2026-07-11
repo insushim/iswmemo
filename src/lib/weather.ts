@@ -108,7 +108,12 @@ export async function startLocationWatch(onMove: () => void): Promise<void> {
   if (locationWatchSub) return; // 이미 추적 중
   onSignificantMove = onMove;
   try {
-    const { status } = await Location.requestForegroundPermissionsAsync();
+    // ⚠️ 여기서는 권한을 "확인"만 한다(request 금지). expo askForPermissions는 이미 허용된
+    // 권한이어도 무조건 시스템 다이얼로그를 띄우는데(granted 체크 없음), 그 투명 다이얼로그가
+    // 포커스를 뺏어 AppState background→active 를 유발 → banner 의 복귀 리스너가 날씨 강제
+    // 새로고침 → 다시 request → 초당 ~25회 다이얼로그 무한폭주(2026-07-11 Galaxy S25 실측,
+    // "업데이트 후 앱 혼자 꺼짐"의 근본원인 — 콜드스타트마다 발생). 요청은 App.tsx 온보딩 전용.
+    const { status } = await Location.getForegroundPermissionsAsync();
     if (status !== "granted") return;
 
     locationWatchSub = await Location.watchPositionAsync(
@@ -329,8 +334,9 @@ export async function getWeather(
         dong = watched.dong;
       }
 
+      // "확인"만 — request 금지(위 startLocationWatch 주석 참조: 다이얼로그 폭주 근본원인)
       const { status } = await withTimeout(
-        Location.requestForegroundPermissionsAsync(),
+        Location.getForegroundPermissionsAsync(),
         5000,
         "location permission",
       );
