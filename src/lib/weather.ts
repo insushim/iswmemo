@@ -135,7 +135,7 @@ export async function startLocationWatch(onMove: () => void): Promise<void> {
           if (geocode.length > 0) {
             const g = geocode[0];
             const region = g.region || g.subregion || "";
-            lastWatchSido = getSidoName(region);
+            lastWatchSido = getSidoName(region, g.subregion || "");
             lastWatchCity = g.subregion || "";
             lastWatchDong =
               g.district ||
@@ -193,7 +193,13 @@ export function getWatchedLocation(): {
 }
 
 // GPS → 시도명 매핑 (reverse geocoding)
-function getSidoName(region: string): string {
+function getSidoName(region: string, city: string = ""): string {
+  // 행정통합으로 "전남광주통합특별시"처럼 두 시도명이 한 문자열에 공존 — 아래의
+  // includes("광주")가 먼저 걸려 전남 시군이 광주로 오판된다(함평→광주 측정소 25km).
+  // 에어코리아 API는 통합 후에도 전남/광주를 별개 sidoName으로 유지(2026-07-11 실측)
+  // → 광주 시내는 자치구(…구), 전남은 시·군이라 시군구명으로 구분.
+  if (region.includes("전남") && region.includes("광주"))
+    return /구$/.test(city) ? "광주" : "전남";
   if (region.includes("서울")) return "서울";
   if (region.includes("부산")) return "부산";
   if (region.includes("대구")) return "대구";
@@ -394,7 +400,7 @@ export async function getWeather(
               if (geocode.length > 0) {
                 const g = geocode[0];
                 const region = g.region || g.subregion || "";
-                sido = getSidoName(region);
+                sido = getSidoName(region, g.subregion || "");
                 city = g.subregion || "";
                 dong =
                   g.district ||
