@@ -46,14 +46,20 @@ public class BootReceiver extends BroadcastReceiver {
                 // adb/스토어 등 외부 경로 업데이트에는 발동하지 않게 마커로 게이트.
                 // BAL은 오버레이 권한(이 앱 필수 권한) 보유 시 허용 — 차단돼도 무해(기존 동작 유지).
                 long lastUpdate = prefs.getLong("last_update_at", 0);
-                if (lastUpdate > 0 && System.currentTimeMillis() - lastUpdate < 10 * 60_000L) {
+                long age = lastUpdate > 0 ? System.currentTimeMillis() - lastUpdate : -1;
+                android.util.Log.d("GpBootReceiver",
+                    "MY_PACKAGE_REPLACED: marker=" + lastUpdate + " ageMs=" + age);
+                if (lastUpdate > 0 && age < 10 * 60_000L) {
                     prefs.edit().remove("last_update_at").apply(); // 1회성 마커 소거
                     Intent launch = new Intent(context, MainActivity.class);
                     launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     context.startActivity(launch);
+                    android.util.Log.d("GpBootReceiver", "relaunch attempted");
+                } else {
+                    android.util.Log.d("GpBootReceiver", "relaunch skipped (no fresh marker)");
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                android.util.Log.e("GpBootReceiver", "relaunch failed", e);
             }
         }
     }
