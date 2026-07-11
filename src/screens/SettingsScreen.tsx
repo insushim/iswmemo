@@ -581,8 +581,8 @@ export default function SettingsScreen() {
             <View style={{ padding: 20, gap: 12 }}>
               <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 19 }}>
                 로그인 비밀번호와 <Text style={{ fontWeight: "700" }}>다른</Text> 별도의
-                암호를 정하세요. 이 암호로 메모·할일·일정을 잠급니다. SchoolDesk(컴퓨터)·웹에서도
-                같은 암호를 입력해야 내용이 보입니다.
+                암호를 정하세요. 이 암호로 메모·할일·일정을 잠급니다. SchoolDesk(컴퓨터)에서도
+                같은 암호를 입력해야 내용이 보입니다. (웹은 아직 암호화 미지원)
               </Text>
               <TextInput
                 placeholder="암호화 암호 (8자 이상)"
