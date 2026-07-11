@@ -143,9 +143,7 @@ export default function GoalBanner() {
           </View>
         )}
       </View>
-      {weather && weather.alerts.length > 0 && (
-        <Text style={styles.alertText}>{weather.alerts.join(" ")}</Text>
-      )}
+      {/* 기상특보(폭염 등) 줄은 표시하지 않는다 — 한 줄을 통째로 차지해 제거(2026-07-11 사용자 요청) */}
 
       {/* 현재 위치 + 출처 + 측정소명 */}
       {weather && (
@@ -271,11 +269,6 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 1,
     marginLeft: 1.5,
-  },
-  alertText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#ef4444",
   },
   sourceText: {
     fontSize: 7,
