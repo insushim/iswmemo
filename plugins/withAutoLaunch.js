@@ -129,6 +129,7 @@ function withAutoLaunch(config) {
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Build;
 
 public class BootReceiver extends BroadcastReceiver {
@@ -139,22 +140,52 @@ public class BootReceiver extends BroadcastReceiver {
         boolean isBoot = Intent.ACTION_BOOT_COMPLETED.equals(action)
             || "android.intent.action.QUICKBOOT_POWERON".equals(action)
             || "com.htc.intent.action.QUICKBOOT_POWERON".equals(action);
-        if (isBoot) {
-            try {
-                // 사용자가 자동실행을 꺼 뒀으면 부팅 시에도 시작하지 않는다(설정 존중).
-                String enabled = context.getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE)
-                    .getString("auto_launch_enabled", "true");
-                if ("false".equals(enabled)) return;
+        // 앱 업데이트(패키지 교체)는 프로세스·서비스를 죽이고 AlarmManager 알람도 소거한다.
+        // 리시버 없이는 다음 앱 실행 전까지 잠금화면 자동표시가 죽어 있었음(2026-07-11 버그).
+        // MY_PACKAGE_REPLACED는 FGS 백그라운드 시작 예외 목록에 명시된 액션(BOOT_COMPLETED와 동급).
+        boolean isUpdate = Intent.ACTION_MY_PACKAGE_REPLACED.equals(action);
+        if (!isBoot && !isUpdate) return;
+
+        SharedPreferences prefs =
+            context.getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE);
+        try {
+            // 사용자가 자동실행을 꺼 뒀으면 서비스는 시작하지 않는다(설정 존중).
+            String enabled = prefs.getString("auto_launch_enabled", "true");
+            if (!"false".equals(enabled)) {
                 Intent serviceIntent = new Intent(context, ScreenUnlockService.class);
-                // 부팅 직후엔 JS 번들 cold init 중 launch 깜빡임을 막기 위해 가드 무장 요청
+                // 부팅/업데이트 직후엔 JS 번들 cold init 중 launch 깜빡임을 막기 위해 가드 무장 요청
                 serviceIntent.putExtra("cold_start_guard", true);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(serviceIntent);
                 } else {
                     context.startService(serviceIntent);
                 }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        if (isUpdate) {
+            try {
+                // 자체 업데이트(AlarmModule이 설치 인텐트 직전 last_update_at 기록)일 때만
+                // 앱을 자동 재실행 — 설치가 앱을 죽여 "혼자 꺼지고 다시 켜야 하던" 단계를 없앤다.
+                // adb/스토어 등 외부 경로 업데이트에는 발동하지 않게 마커로 게이트.
+                // BAL은 오버레이 권한(이 앱 필수 권한) 보유 시 허용 — 차단돼도 무해(기존 동작 유지).
+                long lastUpdate = prefs.getLong("last_update_at", 0);
+                long age = lastUpdate > 0 ? System.currentTimeMillis() - lastUpdate : -1;
+                android.util.Log.d("GpBootReceiver",
+                    "MY_PACKAGE_REPLACED: marker=" + lastUpdate + " ageMs=" + age);
+                if (lastUpdate > 0 && age < 10 * 60_000L) {
+                    prefs.edit().remove("last_update_at").apply(); // 1회성 마커 소거
+                    Intent launch = new Intent(context, MainActivity.class);
+                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(launch);
+                    android.util.Log.d("GpBootReceiver", "relaunch attempted");
+                } else {
+                    android.util.Log.d("GpBootReceiver", "relaunch skipped (no fresh marker)");
+                }
             } catch (Exception e) {
-                e.printStackTrace();
+                android.util.Log.e("GpBootReceiver", "relaunch failed", e);
             }
         }
     }
@@ -254,13 +285,15 @@ public class ScreenUnlockService extends Service {
             e.printStackTrace();
         }
         registerScreenReceiver();
-        // 최근 앱 업데이트 설치 직후면 cold-start 가드 무장. 업데이트는 프로세스를 kill하므로
-        // onStartCommand의 extra 경로로는 무장 못 한다 → AlarmModule이 설치 직전 기록한
-        // SharedPreferences 시각을 보고 여기서 무장한다(업데이트 직후 "떴다 꺼짐" 방지).
+        // 최근 앱 업데이트(또는 첫 설치) 직후면 cold-start 가드 무장(업데이트 직후 "떴다 꺼짐" 방지).
+        // 기준은 OS가 기록하는 패키지 lastUpdateTime — 구 방식(prefs last_update_at, "설치 인텐트
+        // 직전" 기록)은 사용자의 설치 확인·설치 시간에 따라 15초 창을 이미 지나 가드가 사실상
+        // 무장되지 않는 구멍이 있었다(2026-07-11 재발 원인). MY_PACKAGE_REPLACED 리시버가 설치
+        // 수 초 내 서비스를 재시작하므로 90초 창이면 확실히 잡힌다.
         try {
-            long lastUpdate = getSharedPreferences("iwmemo_storage", Context.MODE_PRIVATE)
-                .getLong("last_update_at", 0);
-            if (lastUpdate > 0 && System.currentTimeMillis() - lastUpdate < SERVICE_COLD_START_GUARD_MS) {
+            long osUpdatedAt = getPackageManager()
+                .getPackageInfo(getPackageName(), 0).lastUpdateTime;
+            if (System.currentTimeMillis() - osUpdatedAt < 90_000L) {
                 guardUntil = System.currentTimeMillis() + SERVICE_COLD_START_GUARD_MS;
                 android.util.Log.d(TAG, "cold guard armed: recent app update install");
             }
@@ -848,10 +881,11 @@ public class AlarmModule extends ReactContextBaseJavaModule {
                     apkFile
                 );
 
-                // 업데이트 설치 직전 시각 기록 — 설치로 프로세스가 kill된 뒤 서비스가 START_STICKY로
-                // 재시작될 때 ScreenUnlockService.onCreate가 이 값을 보고 cold-start 가드를 무장한다.
-                // (BootReceiver 경로만 커버하던 guard의 사각지대 = 업데이트 직후 auto-launch가
-                //  cold-init 중 MainActivity를 흔들어 "떴다 꺼짐" 나던 문제 방지.)
+                // "자체 업데이트" 마커 — 설치 완료 후 MY_PACKAGE_REPLACED 리시버(BootReceiver)가
+                // 이 값을 보고 앱을 자동 재실행한다(설치가 앱을 죽여 "혼자 꺼지던" 단계 제거).
+                // adb/스토어 등 외부 경로 업데이트와 구분하는 게이트. cold-start 가드 무장은
+                // 이제 OS packageInfo.lastUpdateTime 기준(ScreenUnlockService.onCreate)이라
+                // 이 시각의 15초 창 의존이 없다.
                 getPrefs().edit().putLong("last_update_at", System.currentTimeMillis()).apply();
 
                 Intent installIntent = new Intent(Intent.ACTION_VIEW);
