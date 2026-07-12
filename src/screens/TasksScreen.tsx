@@ -357,8 +357,18 @@ export default function TasksScreen() {
               renderRightActions={renderRightActions(task)}
               overshootLeft={false}
               overshootRight={false}
-              leftThreshold={15}
-              rightThreshold={40}
+              leftThreshold={20}
+              rightThreshold={20}
+              friction={1}
+              activeOffsetX={[-8, 8]}
+              onSwipeableOpen={(direction) => {
+                if (direction === "left") {
+                  Clipboard.setStringAsync(task.title);
+                  swipeableRefs.current.get(task.id)?.close();
+                } else {
+                  handleDeleteTask(task.id);
+                }
+              }}
             >
               <TouchableOpacity
                 activeOpacity={0.7}

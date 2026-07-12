@@ -645,6 +645,16 @@ export default function CalendarScreen() {
     Share.share({ message });
   };
 
+  const copySchedule = (schedule: Routine) => {
+    const meta = parseScheduleMeta(schedule.description);
+    const time = schedule.startTime ? formatTime12(schedule.startTime) : "";
+    const place = meta?.place ? ` (${meta.place})` : "";
+    Clipboard.setStringAsync(
+      `${time ? time + " " : ""}${schedule.name}${place}`,
+    );
+    swipeableRefs.current.get(schedule.id)?.close();
+  };
+
   const renderLeftActions =
     (schedule: Routine) =>
     (
@@ -660,17 +670,7 @@ export default function CalendarScreen() {
         <Animated.View style={[styles.swipeCopy, { transform: [{ scale }] }]}>
           <TouchableOpacity
             style={styles.swipeCopyBtn}
-            onPress={() => {
-              const meta = parseScheduleMeta(schedule.description);
-              const time = schedule.startTime
-                ? formatTime12(schedule.startTime)
-                : "";
-              const place = meta?.place ? ` (${meta.place})` : "";
-              Clipboard.setStringAsync(
-                `${time ? time + " " : ""}${schedule.name}${place}`,
-              );
-              swipeableRefs.current.get(schedule.id)?.close();
-            }}
+            onPress={() => copySchedule(schedule)}
           >
             <Copy size={20} color="#fff" />
             <Text style={styles.swipeCopyText}>복사</Text>
@@ -733,9 +733,14 @@ export default function CalendarScreen() {
           renderRightActions={renderRightActions(schedule)}
           overshootLeft={false}
           overshootRight={false}
-          leftThreshold={40}
-          rightThreshold={40}
-          friction={2}
+          leftThreshold={20}
+          rightThreshold={20}
+          friction={1}
+          activeOffsetX={[-8, 8]}
+          onSwipeableOpen={(direction) => {
+            if (direction === "left") copySchedule(schedule);
+            else handleDelete(schedule);
+          }}
         >
           <TouchableOpacity
             activeOpacity={0.7}
@@ -852,8 +857,13 @@ export default function CalendarScreen() {
           );
         }}
         overshootRight={false}
-        rightThreshold={40}
-        friction={2}
+        leftThreshold={20}
+        rightThreshold={20}
+        friction={1}
+        activeOffsetX={[-8, 8]}
+        onSwipeableOpen={(direction) => {
+          if (direction === "right") handleDeleteEvent(ev);
+        }}
       >
         <TouchableOpacity
           activeOpacity={0.7}

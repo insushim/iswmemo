@@ -179,6 +179,28 @@ export default function RoutinesScreen() {
     }
   };
 
+  const handleDeleteRoutine = (routine: Routine) => {
+    Alert.alert("삭제", "이 루틴을 삭제하시겠습니까?", [
+      {
+        text: "취소",
+        style: "cancel",
+        onPress: () => swipeableRefs.current.get(routine.id)?.close(),
+      },
+      {
+        text: "삭제",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await api.deleteRoutine(routine.id);
+            fetchRoutines();
+          } catch (error) {
+            Alert.alert("오류", "삭제에 실패했습니다");
+          }
+        },
+      },
+    ]);
+  };
+
   const renderRightActions =
     (routine: Routine) =>
     (
@@ -194,27 +216,7 @@ export default function RoutinesScreen() {
         <Animated.View style={[styles.swipeDelete, { transform: [{ scale }] }]}>
           <TouchableOpacity
             style={styles.swipeDeleteBtn}
-            onPress={() => {
-              Alert.alert("삭제", "이 루틴을 삭제하시겠습니까?", [
-                {
-                  text: "취소",
-                  style: "cancel",
-                  onPress: () => swipeableRefs.current.get(routine.id)?.close(),
-                },
-                {
-                  text: "삭제",
-                  style: "destructive",
-                  onPress: async () => {
-                    try {
-                      await api.deleteRoutine(routine.id);
-                      fetchRoutines();
-                    } catch (error) {
-                      Alert.alert("오류", "삭제에 실패했습니다");
-                    }
-                  },
-                },
-              ]);
-            }}
+            onPress={() => handleDeleteRoutine(routine)}
           >
             <Trash2 size={20} color="#fff" />
             <Text style={styles.swipeDeleteText}>삭제</Text>
@@ -328,7 +330,13 @@ export default function RoutinesScreen() {
                 }}
                 renderRightActions={renderRightActions(routine)}
                 overshootRight={false}
-                rightThreshold={40}
+                leftThreshold={20}
+                rightThreshold={20}
+                friction={1}
+                activeOffsetX={[-8, 8]}
+                onSwipeableOpen={(direction) => {
+                  if (direction === "right") handleDeleteRoutine(routine);
+                }}
               >
                 <View
                   style={[

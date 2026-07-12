@@ -356,9 +356,18 @@ export default function NotesScreen() {
                 renderRightActions={renderRightActions(note)}
                 overshootLeft={false}
                 overshootRight={false}
-                leftThreshold={40}
-                rightThreshold={40}
-                friction={2}
+                leftThreshold={20}
+                rightThreshold={20}
+                friction={1}
+                activeOffsetX={[-8, 8]}
+                onSwipeableOpen={(direction) => {
+                  if (direction === "left") {
+                    Clipboard.setStringAsync(note.content || note.title);
+                    swipeableRefs.current.get(note.id)?.close();
+                  } else {
+                    handleDeleteNote(note.id);
+                  }
+                }}
               >
                 <TouchableOpacity
                   activeOpacity={0.7}

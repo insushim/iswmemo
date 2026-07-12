@@ -599,9 +599,18 @@ export default function HabitsScreen() {
                     renderRightActions={renderRightActionsRoutine(routine)}
                     overshootLeft={false}
                     overshootRight={false}
-                    leftThreshold={40}
-                    rightThreshold={40}
-                    friction={2}
+                    leftThreshold={20}
+                    rightThreshold={20}
+                    friction={1}
+                    activeOffsetX={[-8, 8]}
+                    onSwipeableOpen={(direction) => {
+                      if (direction === "left") {
+                        Clipboard.setStringAsync(routine.name);
+                        swipeableRefs.current.get(routine.id)?.close();
+                      } else {
+                        handleDeleteRoutine(routine);
+                      }
+                    }}
                   >
                     <View
                       style={[
@@ -755,9 +764,18 @@ export default function HabitsScreen() {
                   renderRightActions={renderRightActionsHabit(habit)}
                   overshootLeft={false}
                   overshootRight={false}
-                  leftThreshold={40}
-                  rightThreshold={40}
-                  friction={2}
+                  leftThreshold={20}
+                  rightThreshold={20}
+                  friction={1}
+                  activeOffsetX={[-8, 8]}
+                  onSwipeableOpen={(direction) => {
+                    if (direction === "left") {
+                      Clipboard.setStringAsync(habit.name);
+                      swipeableRefs.current.get(habit.id)?.close();
+                    } else {
+                      handleDeleteHabit(habit);
+                    }
+                  }}
                 >
                   <TouchableOpacity
                     activeOpacity={0.7}
