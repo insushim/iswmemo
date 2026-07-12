@@ -346,6 +346,7 @@ export default function GoalsScreen() {
       <View style={{ flex: 1 }}>
         <DraggableFlatList
           data={filteredGoals}
+          activationDistance={20}
           keyExtractor={(item) => item.id}
           onDragEnd={({ data }: { data: Goal[] }) => {
             setGoals(data);

@@ -578,9 +578,25 @@ export default function SimpleHomeScreen() {
           renderRightActions={renderRightActions(t)}
           overshootLeft={false}
           overshootRight={false}
-          leftThreshold={30}
-          rightThreshold={30}
-          friction={1.5}
+          leftThreshold={20}
+          rightThreshold={20}
+          friction={1}
+          // 가로 8px만 움직여도 스와이프 활성화(리스트 pan은 activationDistance=20으로
+          // 세로 20px 이상에서만 발동하므로 경합이 갈린다). failOffsetY는 두지 않는다 —
+          // 엄지 스와이프의 자연스러운 세로 휨에도 실패(씹힘)하지 않게.
+          activeOffsetX={[-8, 8]}
+          onSwipeableOpen={(direction) => {
+            // 버튼을 다시 탭할 필요 없이 스와이프(드래그)만으로 바로 실행 → 반응성 개선.
+            // (버튼은 스와이프 중 시각 피드백용으로 유지)
+            if (direction === "left") {
+              // 오른쪽으로 드래그 = 복사
+              Clipboard.setStringAsync(t.title);
+              swipeableRefs.current.get(t.id)?.close();
+            } else {
+              // 왼쪽으로 드래그 = 삭제(확인 다이얼로그가 오작동 방지)
+              handleDelete(t);
+            }
+          }}
         >
           <GHTouchable
             activeOpacity={0.7}
@@ -717,6 +733,7 @@ export default function SimpleHomeScreen() {
       <View style={{ flex: 1 }}>
         <DraggableFlatList
           data={tasks}
+          activationDistance={20}
           keyExtractor={(item) => item.id}
           renderItem={renderTaskItem}
           onDragEnd={({ data }: { data: Task[] }) => {

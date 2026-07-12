@@ -1121,6 +1121,7 @@ export default function CalendarScreen() {
       <View style={{ flex: 1 }}>
         <DraggableFlatList
           data={allDisplayed}
+          activationDistance={20}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           onDragEnd={({ data }: { data: Routine[] }) => {

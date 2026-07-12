@@ -92,8 +92,8 @@ android {
         applicationId 'com.growthpad.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 136
-        versionName "3.13.9"
+        versionCode 137
+        versionName "3.13.10"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }

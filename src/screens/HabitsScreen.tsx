@@ -540,6 +540,7 @@ export default function HabitsScreen() {
       <View style={{ flex: 1 }}>
         <DraggableFlatList
           data={combinedList}
+          activationDistance={20}
           keyExtractor={(item) => item.id}
           refreshing={refreshing}
           onRefresh={onRefresh}

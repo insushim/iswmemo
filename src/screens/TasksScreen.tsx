@@ -307,6 +307,7 @@ export default function TasksScreen() {
       {/* 할일 목록 */}
       <DraggableFlatList
         data={filteredTasks}
+        activationDistance={20}
         keyExtractor={(item) => item.id}
         onDragEnd={({ data }: { data: Task[] }) => {
           setTasks(data);

@@ -317,6 +317,7 @@ export default function NotesScreen() {
       <View style={{ flex: 1 }}>
         <DraggableFlatList
           data={filteredNotes}
+          activationDistance={20}
           keyExtractor={(item) => item.id}
           refreshing={refreshing}
           onRefresh={onRefresh}

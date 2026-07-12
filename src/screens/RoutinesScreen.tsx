@@ -280,6 +280,7 @@ export default function RoutinesScreen() {
 
       <DraggableFlatList
         data={routines}
+        activationDistance={20}
         keyExtractor={(item) => item.id}
         onDragEnd={({ data }: { data: Routine[] }) => {
           setRoutines(data);
