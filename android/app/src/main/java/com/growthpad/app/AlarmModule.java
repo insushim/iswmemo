@@ -89,8 +89,20 @@ public class AlarmModule extends ReactContextBaseJavaModule {
             intent.putExtra("type", type == null ? "task" : type);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             int requestCode = taskId.hashCode();
-            PendingIntent pendingIntent = PendingIntent.getActivity(
-                context, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            int piFlags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
+            PendingIntent pendingIntent;
+            if (Build.VERSION.SDK_INT >= 34) {
+                // Android 14+/16: AlarmManager가 띄우는 백그라운드 액티비티 실행이 BAL로 막힌다
+                // (실측 Android16 logcat: BAL_BLOCK, balRequireOptInByPendingIntentCreator=true,
+                // resultIfPiCreatorAllowsBal=BAL_ALLOW_SAW_PERMISSION). PendingIntent 생성자(=앱)가
+                // BAL을 명시 허용하면 앱의 SAW 권한으로 통과된다 → 알람 화면이 백그라운드에서 뜬다.
+                android.app.ActivityOptions opts = android.app.ActivityOptions.makeBasic()
+                    .setPendingIntentCreatorBackgroundActivityStartMode(
+                        android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
+                pendingIntent = PendingIntent.getActivity(context, requestCode, intent, piFlags, opts.toBundle());
+            } else {
+                pendingIntent = PendingIntent.getActivity(context, requestCode, intent, piFlags);
+            }
             long triggerTime = (long) triggerTimeMs;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent);

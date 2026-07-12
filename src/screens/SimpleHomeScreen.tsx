@@ -150,13 +150,37 @@ export default function SimpleHomeScreen() {
       const tasksRes = await api.getTasks();
       if (!Array.isArray(tasksRes)) return;
       const filtered = tasksRes.filter((t: Task) => !t.isCompleted);
-      setTasks(filtered);
-      if (filtered.length > 0) {
-        SecureStore.setItemAsync(
-          TASKS_CACHE_KEY,
-          JSON.stringify(filtered),
-        ).catch(() => {});
-      }
+      // 화면에 보이던 순서를 보존한다. 알람 "확인" 후 앱 복귀 등으로 refetch가 일어나도
+      // 할일 위치가 서버 정렬로 재배치돼 "중간으로 이동"하는 것을 막는다(사용자 요구:
+      // 위치 그대로). 기존 항목은 현재 순서대로 서버 최신값으로 갱신, 새 항목(다른 기기
+      // 추가 등)만 뒤에 추가, 완료·삭제로 사라진 항목은 제거.
+      setTasks((prev) => {
+        let merged: Task[];
+        if (!prev || prev.length === 0) {
+          merged = filtered;
+        } else {
+          const serverById = new Map(filtered.map((t: Task) => [t.id, t]));
+          const seen = new Set<string>();
+          merged = [];
+          for (const t of prev) {
+            const s = serverById.get(t.id);
+            if (s) {
+              merged.push(s);
+              seen.add(t.id);
+            }
+          }
+          for (const t of filtered) {
+            if (!seen.has(t.id)) merged.push(t);
+          }
+        }
+        if (merged.length > 0) {
+          SecureStore.setItemAsync(
+            TASKS_CACHE_KEY,
+            JSON.stringify(merged),
+          ).catch(() => {});
+        }
+        return merged;
+      });
     } catch (e) {
       if (__DEV__) console.error("fetchData error:", e);
       // API 실패 시 캐시에서 로드 (인증 만료 등)

@@ -30,20 +30,66 @@ public class AlarmActivity extends Activity {
     private Vibrator vibrator;
     private Handler handler = new Handler(Looper.getMainLooper());
     private BroadcastReceiver dismissReceiver;
+    private android.os.PowerManager.WakeLock screenWakeLock;
+
+    // ACQUIRE_CAUSES_WAKEUP 웨이크락으로 꺼진 화면을 강제로 켠다(알람 앱 표준).
+    // 60초 타임아웃 = 알람 자동 종료 시간과 동일, 누수 방지.
+    private void acquireWakeScreen() {
+        try {
+            android.os.PowerManager pm =
+                (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                screenWakeLock = pm.newWakeLock(
+                    android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK
+                    | android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP
+                    | android.os.PowerManager.ON_AFTER_RELEASE,
+                    "growthpad:alarmscreen");
+                screenWakeLock.acquire(60000L);
+            }
+        } catch (Exception e) { e.printStackTrace(); }
+    }
+
+    private void releaseWakeScreen() {
+        try {
+            if (screenWakeLock != null && screenWakeLock.isHeld()) screenWakeLock.release();
+        } catch (Exception e) {}
+        screenWakeLock = null;
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // 잠금화면 위 표시 + 화면 켜기. setShowWhenLocked/turnScreenOn(API27+)만으로는
+        // AlarmManager 백그라운드 실행 시 삼성/Android16에서 화면이 안 켜지는 경우가 있어
+        // (실측 Galaxy S25U, Android16: 액티비티는 떠도 화면이 꺼진 채라 사용자가 수동으로
+        // 켜야 보임), 윈도우 플래그 + ACQUIRE_CAUSES_WAKEUP 웨이크락을 함께 건다.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
-        } else {
-            getWindow().addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD);
         }
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // ⚠️ FLAG_DISMISS_KEYGUARD / requestDismissKeyguard 는 넣지 않는다 — 넣으면 보안
+        // 잠금(PIN/패턴/지문) 화면이 먼저 떠서 풀어야 알람이 보인다(사용자 불편 실측).
+        // setShowWhenLocked 만으로 잠금 위에 알람을 띄우면 잠금 해제 없이 확인/완료 버튼을
+        // 누를 수 있다.
+        getWindow().addFlags(
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        acquireWakeScreen();
+
+        // Android 15(API 35)+에서 edge-to-edge가 강제되며(targetSdk 36은 opt-out 불가)
+        // 레거시 @android:Theme.NoTitleBar.Fullscreen 이 무력화된다. 그 결과 시스템 바가
+        // 콘텐츠 위에 겹쳐 "회색 띠"가 생긴다. 알람은 본질적으로 몰입형 전체화면이 맞으므로
+        // 시스템 바를 숨기고(인셋 0), 혹시 바가 잠깐 보여도 잘리지 않도록 아래 setContentView
+        // 뒤 인셋 패딩 폴백을 건다.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        try {
+            androidx.core.view.WindowInsetsControllerCompat insetsCtrl =
+                androidx.core.view.WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+            insetsCtrl.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars());
+            insetsCtrl.setSystemBarsBehavior(
+                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        } catch (Exception e) { e.printStackTrace(); }
 
         String taskId = getIntent().getStringExtra("taskId");
         String title = getIntent().getStringExtra("title");
@@ -65,8 +111,12 @@ public class AlarmActivity extends Activity {
         titleView.setGravity(Gravity.CENTER);
         layout.addView(titleView);
 
+        // ⚠️ 플레인 View는 wrap_content여도 measure 시 getDefaultSize()로 가용 공간을
+        // 전부 채운다(AT_MOST/EXACTLY → specSize 반환). 명시적 높이를 주지 않으면 이
+        // spacer가 화면 전체를 먹어 제목이 위로 붙고 뒤의 버튼이 화면 밖으로 밀린다.
         View spacer = new View(this);
-        spacer.setMinimumHeight(48);
+        spacer.setLayoutParams(new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 48));
         layout.addView(spacer);
 
         Button dismissBtn = new Button(this);
@@ -80,7 +130,8 @@ public class AlarmActivity extends Activity {
 
         if (taskId != null) {
             View spacer2 = new View(this);
-            spacer2.setMinimumHeight(24);
+            spacer2.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 24));
             layout.addView(spacer2);
             Button deleteBtn = new Button(this);
             deleteBtn.setText("완료 처리");
@@ -98,6 +149,16 @@ public class AlarmActivity extends Activity {
         }
 
         setContentView(layout);
+        // 인셋 패딩 폴백: 시스템 바 숨김이 무시되는 기기/상황에서도 콘텐츠(제목·버튼)가
+        // 상단바/하단 제스처바 뒤로 잘리지 않게 한다. 기존 48px 패딩 위에 인셋만큼 더한다.
+        final int basePad = 48;
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(layout, (v, insets) -> {
+            androidx.core.graphics.Insets bars =
+                insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars());
+            v.setPadding(basePad + bars.left, basePad + bars.top, basePad + bars.right, basePad + bars.bottom);
+            return insets;
+        });
+        androidx.core.view.ViewCompat.requestApplyInsets(layout);
         startAlarm();
         handler.postDelayed(() -> { stopAlarm(); finish(); }, 60000);
 
@@ -196,6 +257,7 @@ public class AlarmActivity extends Activity {
     @Override
     protected void onDestroy() {
         stopAlarm();
+        releaseWakeScreen();
         handler.removeCallbacksAndMessages(null);
         if (dismissReceiver != null) { try { unregisterReceiver(dismissReceiver); } catch (Exception e) {} }
         super.onDestroy();
