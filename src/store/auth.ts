@@ -148,6 +148,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             if (data.success && data.user) {
               set({ user: data.user });
             }
+            // 슬라이딩 만료 — 서버가 만료 임박(잔여 15일 미만) 토큰을 감지하면 새 30일 토큰을
+            // 함께 내려준다. 저장해 두면 앱을 계속 쓰는 한 재로그인이 영영 필요 없다.
+            // (없으면 30일마다 강제 로그아웃 + 연동 끊김 — 실제 발생 2026-07-13)
+            if (typeof data.token === "string" && data.token.length > 0) {
+              await api.setToken(data.token);
+            }
           }
         } catch {
           // 네트워크 오류는 조용히 무시 (오프라인에서도 앱 사용 가능)
