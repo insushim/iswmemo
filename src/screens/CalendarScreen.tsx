@@ -64,6 +64,7 @@ import {
 } from "../lib/scheduleMigration";
 import { processPendingDelete } from "../lib/pendingDelete";
 import VoiceInput from "../components/VoiceInput";
+import GoalBanner from "../components/GoalBanner";
 import { Swipeable } from "react-native-gesture-handler";
 import DraggableFlatList, {
   ScaleDecorator,
@@ -879,8 +880,9 @@ export default function CalendarScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={["top"]}
+      edges={[]}
     >
+      <GoalBanner />
       {/* 월 헤더 */}
       <View style={styles.monthHeader}>
         <TouchableOpacity
@@ -1973,8 +1975,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
     borderRadius: 3,
     overflow: "hidden",
+    textAlign: "center",
   },
-  cellMoreText: { fontSize: 8, lineHeight: 10, paddingHorizontal: 2 },
+  cellMoreText: {
+    fontSize: 8,
+    lineHeight: 10,
+    paddingHorizontal: 2,
+    textAlign: "center",
+  },
   detailHeader: {
     flexDirection: "row",
     alignItems: "center",
