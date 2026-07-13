@@ -33,7 +33,6 @@ public class AlarmActivity extends Activity {
     private android.os.PowerManager.WakeLock screenWakeLock;
 
     // ACQUIRE_CAUSES_WAKEUP 웨이크락으로 꺼진 화면을 강제로 켠다(알람 앱 표준).
-    // 60초 타임아웃 = 알람 자동 종료 시간과 동일, 누수 방지.
     private void acquireWakeScreen() {
         try {
             android.os.PowerManager pm =
@@ -59,29 +58,24 @@ public class AlarmActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // 잠금화면 위 표시 + 화면 켜기. setShowWhenLocked/turnScreenOn(API27+)만으로는
-        // AlarmManager 백그라운드 실행 시 삼성/Android16에서 화면이 안 켜지는 경우가 있어
-        // (실측 Galaxy S25U, Android16: 액티비티는 떠도 화면이 꺼진 채라 사용자가 수동으로
-        // 켜야 보임), 윈도우 플래그 + ACQUIRE_CAUSES_WAKEUP 웨이크락을 함께 건다.
+        // 잠금화면 위 표시 + 화면 켜기. setShowWhenLocked/turnScreenOn만으로는 AlarmManager
+        // 백그라운드 실행 시 삼성/Android16에서 화면이 안 켜지는 경우가 있어 윈도우 플래그 +
+        // ACQUIRE_CAUSES_WAKEUP 웨이크락을 함께 건다.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
         }
         // ⚠️ FLAG_DISMISS_KEYGUARD / requestDismissKeyguard 는 넣지 않는다 — 넣으면 보안
-        // 잠금(PIN/패턴/지문) 화면이 먼저 떠서 풀어야 알람이 보인다(사용자 불편 실측).
-        // setShowWhenLocked 만으로 잠금 위에 알람을 띄우면 잠금 해제 없이 확인/완료 버튼을
-        // 누를 수 있다.
+        // 잠금 화면이 먼저 떠서 풀어야 알람이 보인다. setShowWhenLocked 만으로 잠금 위에 표시.
         getWindow().addFlags(
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         acquireWakeScreen();
 
-        // Android 15(API 35)+에서 edge-to-edge가 강제되며(targetSdk 36은 opt-out 불가)
-        // 레거시 @android:Theme.NoTitleBar.Fullscreen 이 무력화된다. 그 결과 시스템 바가
-        // 콘텐츠 위에 겹쳐 "회색 띠"가 생긴다. 알람은 본질적으로 몰입형 전체화면이 맞으므로
-        // 시스템 바를 숨기고(인셋 0), 혹시 바가 잠깐 보여도 잘리지 않도록 아래 setContentView
-        // 뒤 인셋 패딩 폴백을 건다.
+        // Android 15(API 35)+ edge-to-edge 강제로 레거시 Fullscreen 테마가 무력화되어
+        // 시스템 바가 콘텐츠 위에 겹친다("회색 띠"). 알람은 몰입형 전체화면이 맞으므로
+        // 시스템 바를 숨기고, 아래 setContentView 뒤 인셋 패딩 폴백으로 잘림을 방지한다.
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         try {
             androidx.core.view.WindowInsetsControllerCompat insetsCtrl =
@@ -112,8 +106,8 @@ public class AlarmActivity extends Activity {
         layout.addView(titleView);
 
         // ⚠️ 플레인 View는 wrap_content여도 measure 시 getDefaultSize()로 가용 공간을
-        // 전부 채운다(AT_MOST/EXACTLY → specSize 반환). 명시적 높이를 주지 않으면 이
-        // spacer가 화면 전체를 먹어 제목이 위로 붙고 뒤의 버튼이 화면 밖으로 밀린다.
+        // 전부 채운다. 명시적 높이를 주지 않으면 이 spacer가 화면 전체를 먹어 제목이 위로
+        // 붙고 뒤의 버튼이 화면 밖으로 밀린다.
         View spacer = new View(this);
         spacer.setLayoutParams(new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 48));
@@ -149,8 +143,7 @@ public class AlarmActivity extends Activity {
         }
 
         setContentView(layout);
-        // 인셋 패딩 폴백: 시스템 바 숨김이 무시되는 기기/상황에서도 콘텐츠(제목·버튼)가
-        // 상단바/하단 제스처바 뒤로 잘리지 않게 한다. 기존 48px 패딩 위에 인셋만큼 더한다.
+        // 인셋 패딩 폴백: 시스템 바 숨김이 무시되는 기기에서도 콘텐츠가 바 뒤로 잘리지 않게.
         final int basePad = 48;
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(layout, (v, insets) -> {
             androidx.core.graphics.Insets bars =

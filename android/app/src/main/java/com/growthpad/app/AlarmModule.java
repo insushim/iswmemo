@@ -33,6 +33,52 @@ public class AlarmModule extends ReactContextBaseJavaModule {
         return getReactApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
+    // ── PBKDF2-HMAC-SHA256 (E2EE 키 도출) ─────────────────────────────
+    // JS(@noble) 순수 구현은 Hermes에서 60만회에 수 분 걸려 UI가 얼어붙는다(ANR).
+    // 스펙(RFC 2898)을 raw bytes로 그대로 구현해 @noble과 바이트 단위 동일 출력 보장(실측 확인).
+    private static byte[] pbkdf2HmacSha256(byte[] pass, byte[] salt, int iterations, int dkLen) throws Exception {
+        javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+        mac.init(new javax.crypto.spec.SecretKeySpec(pass, "HmacSHA256"));
+        final int hLen = 32;
+        int blocks = (dkLen + hLen - 1) / hLen;
+        byte[] dk = new byte[blocks * hLen];
+        byte[] saltBlock = new byte[salt.length + 4];
+        System.arraycopy(salt, 0, saltBlock, 0, salt.length);
+        for (int i = 1; i <= blocks; i++) {
+            saltBlock[salt.length] = (byte) (i >>> 24);
+            saltBlock[salt.length + 1] = (byte) (i >>> 16);
+            saltBlock[salt.length + 2] = (byte) (i >>> 8);
+            saltBlock[salt.length + 3] = (byte) i;
+            byte[] u = mac.doFinal(saltBlock);
+            byte[] t = u.clone();
+            for (int c = 1; c < iterations; c++) {
+                u = mac.doFinal(u);
+                for (int k = 0; k < hLen; k++) t[k] ^= u[k];
+            }
+            System.arraycopy(t, 0, dk, (i - 1) * hLen, hLen);
+        }
+        return java.util.Arrays.copyOf(dk, dkLen);
+    }
+
+    /** passB64/saltB64 → base64(파생키). 백그라운드 스레드에서 실행(네이티브 ~1초). */
+    @ReactMethod
+    public void deriveKeyPbkdf2(String passB64, String saltB64, int iterations, int dkLen, Promise promise) {
+        new Thread(() -> {
+            try {
+                byte[] pass = android.util.Base64.decode(passB64, android.util.Base64.NO_WRAP);
+                byte[] salt = android.util.Base64.decode(saltB64, android.util.Base64.NO_WRAP);
+                if (pass.length == 0 || salt.length == 0 || iterations < 1 || dkLen < 1) {
+                    promise.reject("E2EE_ARGS", "invalid pbkdf2 args");
+                    return;
+                }
+                byte[] key = pbkdf2HmacSha256(pass, salt, iterations, dkLen);
+                promise.resolve(android.util.Base64.encodeToString(key, android.util.Base64.NO_WRAP));
+            } catch (Exception e) {
+                promise.reject("E2EE_DERIVE", e.getMessage());
+            }
+        }, "e2ee-pbkdf2").start();
+    }
+
     // SharedPreferences 기반 key-value 저장소 — expo-secure-store가 기기 버그로
     // null 반환하는 경우를 우회하기 위한 reliable fallback
     @ReactMethod
@@ -92,10 +138,8 @@ public class AlarmModule extends ReactContextBaseJavaModule {
             int piFlags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
             PendingIntent pendingIntent;
             if (Build.VERSION.SDK_INT >= 34) {
-                // Android 14+/16: AlarmManager가 띄우는 백그라운드 액티비티 실행이 BAL로 막힌다
-                // (실측 Android16 logcat: BAL_BLOCK, balRequireOptInByPendingIntentCreator=true,
-                // resultIfPiCreatorAllowsBal=BAL_ALLOW_SAW_PERMISSION). PendingIntent 생성자(=앱)가
-                // BAL을 명시 허용하면 앱의 SAW 권한으로 통과된다 → 알람 화면이 백그라운드에서 뜬다.
+                // Android 14+/16: AlarmManager 백그라운드 액티비티 실행이 BAL로 막힌다. PendingIntent
+                // 생성자(=앱)가 BAL을 명시 허용하면 앱 SAW 권한으로 통과된다(실측 Android16).
                 android.app.ActivityOptions opts = android.app.ActivityOptions.makeBasic()
                     .setPendingIntentCreatorBackgroundActivityStartMode(
                         android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);

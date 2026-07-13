@@ -15,6 +15,7 @@ import { pbkdf2 } from '@noble/hashes/pbkdf2.js'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { gcm } from '@noble/ciphers/aes.js'
 import * as ExpoCrypto from 'expo-crypto'
+import { NativeModules } from 'react-native'
 
 export const E2EE_PREFIX = 'e2ee:v1:'
 const PBKDF2_ITERATIONS = 600_000
@@ -71,12 +72,49 @@ function deriveSalt(email: string): Uint8Array {
   return sha256(te.encode(email.toLowerCase().normalize('NFC') + SALT_SUFFIX))
 }
 
-/** passphrase + email → AES-256 키(32바이트). 양 기기 동일 입력이면 동일 키. */
+/**
+ * passphrase + email → AES-256 키(32바이트). 양 기기 동일 입력이면 동일 키.
+ * ⚠️ 동기 버전 — Hermes 순수 JS 로 60만 회를 도는 데 수십 초~수 분이 걸리고 그동안 JS 스레드가
+ * 통째로 멈춘다(앱 먹통/ANR/강제종료). 앱 런타임에서는 쓰지 말고 deriveKeyAsync 를 쓸 것.
+ * (스펙 참조 구현 겸 네이티브 미탑재 환경 폴백용으로만 남긴다.)
+ */
 export function deriveKey(passphrase: string, email: string): Uint8Array {
   return pbkdf2(sha256, te.encode(nfc(passphrase.trim())), deriveSalt(email), {
     c: PBKDF2_ITERATIONS,
     dkLen: KEY_LEN,
   })
+}
+
+/**
+ * passphrase + email → AES-256 키(32바이트). **앱에서는 반드시 이걸 쓴다.**
+ *
+ * 네이티브(AlarmModule.deriveKeyPbkdf2, javax.crypto Mac)에서 백그라운드 스레드로 도출한다
+ * → UI 안 멈춤(~1초). 네이티브가 없으면(구버전 앱/웹) @noble 동기 폴백.
+ *
+ * 네이티브 구현은 동일 스펙(RFC 2898 PBKDF2-HMAC-SHA256)이며 @noble 과 **바이트 단위 동일** 출력이
+ * 실측 확인됐다(2026-07-13) — 다른 플랫폼과의 복호화 호환 유지.
+ */
+export async function deriveKeyAsync(passphrase: string, email: string): Promise<Uint8Array> {
+  const passBytes = te.encode(nfc(passphrase.trim()))
+  const salt = deriveSalt(email)
+
+  const mod: any = (NativeModules as any)?.AlarmModule
+  if (mod && typeof mod.deriveKeyPbkdf2 === 'function') {
+    try {
+      const b64: string = await mod.deriveKeyPbkdf2(
+        bytesToBase64(passBytes),
+        bytesToBase64(salt),
+        PBKDF2_ITERATIONS,
+        KEY_LEN,
+      )
+      const key = base64ToBytes(b64)
+      if (key.length === KEY_LEN) return key
+      // 길이가 다르면 네이티브 이상 — 폴백으로 진행(무결성 우선)
+    } catch {
+      // 네이티브 실패 → 폴백(느리지만 결과는 동일)
+    }
+  }
+  return pbkdf2(sha256, passBytes, salt, { c: PBKDF2_ITERATIONS, dkLen: KEY_LEN })
 }
 
 export function isEncrypted(value: unknown): boolean {

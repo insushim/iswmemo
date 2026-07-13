@@ -3,7 +3,7 @@
  * SchoolDesk·웹과 동일 스펙으로 도출되므로, 같은 이메일·암호를 넣으면 같은 키가 나온다.
  */
 import * as SecureStore from 'expo-secure-store'
-import { deriveKey } from './e2ee'
+import { deriveKeyAsync } from './e2ee'
 
 const KEY_STORE = 'e2ee_key_b64'
 
@@ -60,7 +60,9 @@ export function getE2EEKeySync(): Uint8Array | null {
 }
 
 export async function setE2EEPassphrase(passphrase: string, email: string): Promise<void> {
-  const key = deriveKey(passphrase, email)
+  // 네이티브 백그라운드 스레드에서 도출(~1초). 과거 동기 deriveKey 는 JS 스레드를 수 분간
+  // 통째로 막아 앱이 먹통/강제종료됐다(사용자 실측 2026-07-13).
+  const key = await deriveKeyAsync(passphrase, email)
   await SecureStore.setItemAsync(KEY_STORE, bytesToBase64(key))
   _cached = key
   _resolved = true

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 이하 자동백업. iwmemo_storage = 평문 JWT 복제본 → 백업 제외(보안). -->
+<full-backup-content>
+  <include domain="sharedpref" path="."/>
+  <exclude domain="sharedpref" path="SecureStore"/>
+  <exclude domain="sharedpref" path="iwmemo_storage"/>
+</full-backup-content>
