@@ -23,6 +23,7 @@ import { api } from "../lib/api";
 import { Note } from "../types";
 import VoiceInput from "../components/VoiceInput";
 import { Swipeable } from "react-native-gesture-handler";
+import { isEncrypted } from "../lib/e2ee";
 import DraggableFlatList, {
   ScaleDecorator,
   RenderItemParams,
@@ -177,7 +178,24 @@ export default function NotesScreen() {
     }
   };
 
+  // 스쿨데스크가 암호화해 올린 메모를 폰에서 못 여는 경우(폰에 E2EE 암호 미설정 또는
+  // 암호가 서로 다름) content 가 "e2ee:v1:..." 암호문 그대로다. 그걸 화면에 뿌리면
+  // 메모가 깨진 것처럼 보이고, 그 상태로 저장하면 원문이 파괴된다 →
+  // 표시만 자물쇠로 바꾸고 편집은 막는다(데이터는 손대지 않음).
+  const isLockedNote = (note: Note) => isEncrypted(note.content);
+  const noteDisplayText = (note: Note) =>
+    isLockedNote(note)
+      ? "🔒 암호로 잠긴 메모 — 설정에서 스쿨데스크와 같은 암호를 입력하세요"
+      : note.content || note.title;
+
   const handleEditNote = (note: Note) => {
+    if (isLockedNote(note)) {
+      Alert.alert(
+        "잠긴 메모",
+        "스쿨데스크에서 암호화한 메모입니다. 설정 → 암호화에서 스쿨데스크와 같은 암호를 입력하면 볼 수 있습니다.",
+      );
+      return;
+    }
     setEditingNote(note);
     setNoteContent(note.content || "");
     setSelectedColor(note.color || COLORS[0]);
@@ -226,7 +244,7 @@ export default function NotesScreen() {
           <TouchableOpacity
             style={styles.swipeCopyBtn}
             onPress={() => {
-              Clipboard.setStringAsync(note.content || note.title);
+              Clipboard.setStringAsync(noteDisplayText(note));
               swipeableRefs.current.get(note.id)?.close();
             }}
           >
@@ -362,7 +380,7 @@ export default function NotesScreen() {
                 activeOffsetX={[-8, 8]}
                 onSwipeableOpen={(direction) => {
                   if (direction === "left") {
-                    Clipboard.setStringAsync(note.content || note.title);
+                    Clipboard.setStringAsync(noteDisplayText(note));
                     swipeableRefs.current.get(note.id)?.close();
                   } else {
                     handleDeleteNote(note.id);
@@ -392,7 +410,7 @@ export default function NotesScreen() {
                         { fontSize: scaledFont(13), textAlign },
                       ]}
                     >
-                      {note.content || note.title}
+                      {noteDisplayText(note)}
                     </Text>
                     <Text style={styles.noteDate}>
                       {format(new Date(note.updatedAt), "M월 d일", {
