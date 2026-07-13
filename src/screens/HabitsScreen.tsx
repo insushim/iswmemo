@@ -60,6 +60,8 @@ export default function HabitsScreen() {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [addMode, setAddMode] = useState<AddMode>("habit");
+  // 습관/루틴을 한 목록에 섞으면 루틴이 습관 밑에 묻혀 안 쓰게 된다 → 상단 탭으로 분리.
+  const [viewMode, setViewMode] = useState<AddMode>("habit");
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
   const [newName, setNewName] = useState("");
@@ -158,7 +160,8 @@ export default function HabitsScreen() {
     setEditingRoutine(null);
     setNewName("");
     setSelectedColor(COLORS[0]);
-    setAddMode("habit");
+    // 보고 있는 탭 기준으로 추가(루틴 탭에서 + 누르면 루틴 추가)
+    setAddMode(viewMode);
     setNewItems([""]);
     setShowModal(true);
   };
@@ -499,11 +502,11 @@ export default function HabitsScreen() {
     return aDone - bDone;
   });
 
-  // 습관 + 루틴 합친 리스트
-  const combinedList: ListEntry[] = [
-    ...sortedHabits.map((h) => ({ ...h, _listType: "habit" as const })),
-    ...routines.map((r) => ({ ...r, _listType: "routine" as const })),
-  ];
+  // 선택한 탭의 항목만 보여준다(습관 ↔ 루틴 분리).
+  const combinedList: ListEntry[] =
+    viewMode === "habit"
+      ? sortedHabits.map((h) => ({ ...h, _listType: "habit" as const }))
+      : routines.map((r) => ({ ...r, _listType: "routine" as const }));
 
   const addItemField = () => setNewItems([...newItems, ""]);
   const updateItemField = (index: number, value: string) => {
@@ -519,10 +522,13 @@ export default function HabitsScreen() {
     >
       <GoalBanner />
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.foreground }]}>습관</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>
+          {viewMode === "habit" ? "습관" : "루틴"}
+        </Text>
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-          오늘{completedCount}/{habits.length}완료
-          {routines.length > 0 ? ` 루틴${routines.length}` : ""}
+          {viewMode === "habit"
+            ? `오늘${completedCount}/${habits.length}완료`
+            : `루틴 ${routines.length}개`}
         </Text>
         {combinedList.length > 0 && (
           <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
@@ -535,6 +541,40 @@ export default function HabitsScreen() {
         >
           <Plus size={18} color="#fff" />
         </TouchableOpacity>
+      </View>
+
+      {/* 습관 / 루틴 전환 — 예전엔 한 목록에 붙어 있어 루틴이 묻혔다 */}
+      <View style={styles.modeTabs}>
+        {(
+          [
+            { key: "habit" as const, label: `습관 ${habits.length}` },
+            { key: "routine" as const, label: `루틴 ${routines.length}` },
+          ]
+        ).map((t) => {
+          const active = viewMode === t.key;
+          return (
+            <TouchableOpacity
+              key={t.key}
+              style={[
+                styles.modeTab,
+                {
+                  backgroundColor: active ? colors.primary : colors.card,
+                  borderColor: active ? colors.primary : colors.border,
+                },
+              ]}
+              onPress={() => setViewMode(t.key)}
+            >
+              <Text
+                style={[
+                  styles.modeTabText,
+                  { color: active ? "#fff" : colors.mutedForeground },
+                ]}
+              >
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <View style={{ flex: 1 }}>
@@ -1071,6 +1111,20 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     gap: 6,
   },
+  modeTabs: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 6,
+  },
+  modeTab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  modeTabText: { fontSize: 13, fontWeight: "700" },
   title: { fontSize: 16, fontWeight: "700" },
   subtitle: { fontSize: 11 },
   addBtn: {
