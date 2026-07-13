@@ -542,7 +542,11 @@ class ApiClient {
   // --- Notes ---
 
   async getNotes(): Promise<Note[]> {
-    const notes = await this.fetch<Note[]>("/api/notes");
+    // ⚠️ 서버는 { notes, pagination } 으로 감싸서 준다. 예전엔 배열로 가정하고
+    //    Array.isArray 가 false 라서 **복호화를 통째로 건너뛰었다** → 암호를 제대로
+    //    넣어도 스쿨데스크가 암호화한 메모가 영영 암호문으로 보였다(2026-07-13).
+    const res = await this.fetch<Note[] | { notes: Note[] }>("/api/notes");
+    const notes = Array.isArray(res) ? res : (res?.notes ?? []);
     const key = await getE2EEKey();
     if (!key || !Array.isArray(notes)) return notes;
     return notes.map((n) => decryptNote(n, key));

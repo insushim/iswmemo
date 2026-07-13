@@ -23,8 +23,11 @@ export async function verifyE2EEAgainstServer(): Promise<E2EECheck> {
   try {
     // ⚠️ api.getNotes() 는 이미 복호화된 결과라 판정에 쓸 수 없다. 원본이 필요하므로
     //    복호화를 거치지 않는 저수준 fetch 를 쓴다.
-    const notes = await api.fetch<{ content?: string | null }[]>("/api/notes");
-    raw = Array.isArray(notes) ? notes : [];
+    const res = await api.fetch<
+      { content?: string | null }[] | { notes: { content?: string | null }[] }
+    >("/api/notes");
+    // 서버는 { notes, pagination } 으로 감싸서 준다.
+    raw = Array.isArray(res) ? res : (res?.notes ?? []);
   } catch {
     return "offline";
   }
