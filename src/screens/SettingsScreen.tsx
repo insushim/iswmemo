@@ -54,6 +54,7 @@ import {
   ALARM_DURATION_OPTIONS,
 } from "../store/settings";
 import { APP_VERSION } from "../lib/config";
+import { verifyE2EEAgainstServer } from "../lib/e2eeVerify";
 
 const { AutoLaunchModule } = NativeModules;
 
@@ -120,12 +121,55 @@ export default function SettingsScreen() {
       setPass1("");
       setPass2("");
       setShowE2EE(false);
+
+      // 넣은 암호가 스쿨데스크/웹의 것과 **실제로 같은지** 서버 데이터로 확인한다.
+      // (지금까지는 확인 수단이 없어서, 암호가 달라도 "설정됨"만 뜨고 메모는 계속
+      //  암호문으로 보였다 — 사용자가 원인을 알 길이 없었다.)
+      const check = await verifyE2EEAgainstServer();
+      if (check === "mismatch") {
+        Alert.alert(
+          "암호가 다릅니다",
+          "암호는 설정됐지만, 스쿨데스크에서 암호화한 데이터를 이 암호로는 열지 못했습니다.\n\n스쿨데스크(컴퓨터)에 넣은 암호와 글자 하나까지 같아야 합니다. 다시 확인해 주세요.",
+        );
+        return;
+      }
       Alert.alert(
         "암호화 설정됨",
-        "메모·할일·일정이 이 암호로 암호화됩니다.\n\nSchoolDesk(컴퓨터)·웹에서도 같은 암호를 입력하세요.\n(웹은 설정 → 데이터 암호화에서 입력)\n\n⚠️ 암호를 잊으면 암호화된 데이터를 풀 수 없습니다. 종이에 적어 보관하세요.",
+        (check === "ok"
+          ? "✅ 스쿨데스크에서 암호화한 데이터를 정상적으로 열었습니다.\n\n"
+          : "") +
+          "메모·할일·일정이 이 암호로 암호화됩니다.\n\nSchoolDesk(컴퓨터)·웹에서도 같은 암호를 입력하세요.\n(웹은 설정 → 데이터 암호화에서 입력)\n\n⚠️ 암호를 잊으면 암호화된 데이터를 풀 수 없습니다. 종이에 적어 보관하세요.",
       );
     } catch (e) {
       Alert.alert("실패", "암호화 설정에 실패했습니다.");
+    } finally {
+      setE2eeBusy(false);
+    }
+  };
+
+  // 이미 암호를 넣은 뒤에도 "왜 스쿨데스크 메모가 안 열리지?"를 스스로 확인할 수 있게.
+  const handleVerifyE2EE = async () => {
+    setE2eeBusy(true);
+    try {
+      const check = await verifyE2EEAgainstServer();
+      if (check === "ok") {
+        Alert.alert(
+          "암호 일치",
+          "스쿨데스크에서 암호화한 데이터를 정상적으로 열었습니다. 목록을 새로고침하면 내용이 보입니다.",
+        );
+      } else if (check === "mismatch") {
+        Alert.alert(
+          "암호가 다릅니다",
+          "스쿨데스크에서 암호화한 데이터를 이 암호로는 열지 못했습니다.\n\n스쿨데스크(컴퓨터)에 넣은 암호와 글자 하나까지 같아야 합니다. 이 화면에서 암호화를 껐다가 같은 암호로 다시 설정해 보세요.",
+        );
+      } else if (check === "offline") {
+        Alert.alert("확인 실패", "서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.");
+      } else {
+        Alert.alert(
+          "확인할 항목 없음",
+          "서버에 암호화된 데이터가 없어 비교할 수 없습니다.",
+        );
+      }
     } finally {
       setE2eeBusy(false);
     }
@@ -505,6 +549,15 @@ export default function SettingsScreen() {
             }
             onPress={() => (e2eeOn ? handleClearE2EE() : setShowE2EE(true))}
           />
+          {e2eeOn && (
+            <SettingItem
+              icon={Lock}
+              iconColor="#3b82f6"
+              title="암호 확인 (스쿨데스크와 같은지)"
+              subtitle="서버의 암호화된 데이터를 실제로 열어봅니다"
+              onPress={handleVerifyE2EE}
+            />
+          )}
         </View>
 
         {/* 지원 */}
