@@ -64,6 +64,7 @@ import { Task } from "../types";
 import { useSettingsStore } from "../store/settings";
 import { scheduleTaskAlarm, cancelTaskAlarm } from "../lib/taskAlarm";
 import VoiceInput from "../components/VoiceInput";
+import { processPendingDelete as runPendingDelete } from "../lib/pendingDelete";
 
 const TASKS_CACHE_KEY = "cached_tasks_v1";
 
@@ -124,24 +125,9 @@ export default function SimpleHomeScreen() {
     loadCached();
   }, []);
 
+  // 잠금화면에서 누른 삭제(pending) 처리 — 로직은 lib/pendingDelete 에 공용화되어 있다.
   const processPendingDelete = useCallback(async () => {
-    if (Platform.OS !== "android" || !NativeModules.AlarmModule) return;
-    try {
-      const pending = await NativeModules.AlarmModule.getPendingDelete();
-      if (pending?.id) {
-        if (pending.type === "schedule") {
-          await api.deleteRoutine(pending.id);
-        } else {
-          await api.deleteTask(pending.id);
-        }
-        await NativeModules.AlarmModule.clearPendingDelete();
-      }
-    } catch (e) {
-      // 삭제 실패해도 pending은 지움 (무한 반복 방지)
-      try {
-        await NativeModules.AlarmModule.clearPendingDelete();
-      } catch {}
-    }
+    await runPendingDelete();
   }, []);
 
   const fetchData = useCallback(async () => {

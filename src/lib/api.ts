@@ -349,7 +349,10 @@ class ApiClient {
           );
         }
 
-        const err = new Error(msg);
+        const err = new Error(msg) as Error & { status?: number };
+        // 호출부가 "이미 없음(404)"과 "네트워크 실패"를 구분할 수 있어야 한다
+        // (잠금화면 pending 삭제: 404면 정리, 네트워크 실패면 다음 기회에 재시도).
+        err.status = response.status;
         reportError(err, `${method} ${endpoint}`);
         throw err;
       }
@@ -599,7 +602,7 @@ class ApiClient {
   }
 
   async reorder(
-    type: "task" | "habit" | "note" | "routine" | "goal",
+    type: "task" | "habit" | "note" | "routine" | "goal" | "event",
     items: { id: string; order: number }[],
   ): Promise<void> {
     await this.fetch<void>("/api/reorder", {

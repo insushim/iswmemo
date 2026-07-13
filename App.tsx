@@ -31,6 +31,7 @@ import { checkForUpdate } from "./src/lib/appUpdate";
 import { persistentGet, persistentSet } from "./src/lib/storage";
 import { primeSyncOriginId, getCachedSyncOriginId } from "./src/lib/sync-origin";
 import { emitSyncChanged } from "./src/lib/syncRefresh";
+import { migrateLegacySchedules } from "./src/lib/scheduleMigration";
 
 const { AutoLaunchModule } = NativeModules;
 
@@ -115,6 +116,14 @@ export default function App() {
     };
     init();
   }, []);
+
+  // 레거시 개인일정(routines 편법 저장) → 정식 events 이관.
+  // 달력 화면에서도 부르지만(중복 호출은 모듈 내 락으로 1회로 합쳐짐), 달력을 한 번도
+  // 열지 않는 사용자의 루틴/대시보드 화면에 일정 행이 계속 섞여 보이지 않도록 부팅 시에도 실행.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    migrateLegacySchedules().catch(() => {});
+  }, [isAuthenticated]);
 
   // 로그인 후 필요 권한 요청 (다른 앱 위에 표시 → 알람 순서로)
   useEffect(() => {

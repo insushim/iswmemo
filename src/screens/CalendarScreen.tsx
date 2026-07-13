@@ -52,12 +52,17 @@ import {
   subMonths,
 } from "date-fns";
 import { ko } from "date-fns/locale";
-import * as SecureStore from "expo-secure-store";
 import { useTheme } from "../lib/theme";
 import { api } from "../lib/api";
-import { Routine, Task, CalendarEvent } from "../types";
+import { Task, CalendarEvent } from "../types";
 import { useSettingsStore } from "../store/settings";
 import { scheduleTaskAlarm, cancelTaskAlarm } from "../lib/taskAlarm";
+import {
+  migrateLegacySchedules,
+  PERSONAL_CATEGORY,
+  PERSONAL_COLOR,
+} from "../lib/scheduleMigration";
+import { processPendingDelete } from "../lib/pendingDelete";
 import VoiceInput from "../components/VoiceInput";
 import { Swipeable } from "react-native-gesture-handler";
 import DraggableFlatList, {
@@ -65,7 +70,6 @@ import DraggableFlatList, {
   RenderItemParams,
 } from "react-native-draggable-flatlist";
 
-const SCHEDULE_CACHE_KEY = "cached_schedules_v1";
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const TASK_COLOR = "#f59e0b"; // 기한 할일 = 주황 (ScheduleScreen 컨벤션과 통일)
 const SCHOOL_COLOR = "#8b5cf6"; // 학교일정(events, school-desk 연동) = 보라
@@ -95,23 +99,19 @@ const RECURRENCE_LABEL: Record<string, string> = {
   yearly: "매년",
 };
 
-interface ScheduleMeta {
-  date: string; // YYYY-MM-DD
-  place?: string;
-  notify?: boolean;
+// 개인일정 = category "개인" 인 event. (예전엔 routines 에 편법 저장 → scheduleMigration 이 이관)
+function isPersonalEvent(e: CalendarEvent): boolean {
+  return (e.category || "") === PERSONAL_CATEGORY;
 }
 
-function parseScheduleMeta(desc: string | null): ScheduleMeta | null {
-  if (!desc) return null;
+// 개인일정 알림 여부는 reminderSettings JSON 의 notify 플래그에 담는다(기본 켬).
+function readNotify(e: CalendarEvent): boolean {
   try {
-    const parsed = JSON.parse(desc);
-    if (parsed && parsed.date) return parsed;
-  } catch {}
-  return null;
-}
-
-function getScheduleTime(routine: Routine): string {
-  return routine.startTime || "00:00";
+    const r = e.reminderSettings ? JSON.parse(e.reminderSettings) : null;
+    return r?.notify !== false;
+  } catch {
+    return true;
+  }
 }
 
 // 월 그리드를 항상 완전한 주(7칸) 단위로 — flexWrap + (100/7)% 부동소수점 초과로
@@ -129,9 +129,8 @@ export default function CalendarScreen() {
   const { colors, scaledFont, cardPadding, textAlign } = useTheme();
   const { scheduleAlarmEnabled } = useSettingsStore();
   const [refreshing, setRefreshing] = useState(false);
-  const [schedules, setSchedules] = useState<Routine[]>([]);
   const [deadlineTasks, setDeadlineTasks] = useState<Task[]>([]);
-  const [events, setEvents] = useState<CalendarEvent[]>([]); // 학교일정(events)
+  const [events, setEvents] = useState<CalendarEvent[]>([]); // 개인일정 + 학교일정(events)
   const [viewMonth, setViewMonth] = useState<Date>(startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState(new Date());
   const viewMonthRef = useRef(viewMonth);
@@ -141,8 +140,7 @@ export default function CalendarScreen() {
 
   // 추가/수정 모달
   const [showModal, setShowModal] = useState(false);
-  const [editingSchedule, setEditingSchedule] = useState<Routine | null>(null);
-  // 학교일정(events) 모달 상태
+  // 일정(events) 모달 상태
   const [entryType, setEntryType] = useState<"personal" | "school">("personal");
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [eventCategory, setEventCategory] = useState<string>("일반");
@@ -176,34 +174,6 @@ export default function CalendarScreen() {
     return { hour: hour24 - 12, am: false };
   };
 
-  // 캐시에서 즉시 로드
-  useEffect(() => {
-    const loadCached = async () => {
-      try {
-        const cached = await SecureStore.getItemAsync(SCHEDULE_CACHE_KEY);
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) setSchedules(parsed);
-        }
-      } catch {}
-    };
-    loadCached();
-  }, []);
-
-  const fetchSchedules = async () => {
-    try {
-      const response = await api.getRoutines();
-      const data = Array.isArray(response) ? response : response.routines;
-      setSchedules(data || []);
-      SecureStore.setItemAsync(
-        SCHEDULE_CACHE_KEY,
-        JSON.stringify(data || []),
-      ).catch(() => {});
-    } catch (error) {
-      console.error("Schedule fetch error:", error);
-    }
-  };
-
   const fetchTasks = async () => {
     try {
       const tasksRes = await api.getTasks();
@@ -216,7 +186,7 @@ export default function CalendarScreen() {
     } catch {}
   };
 
-  // 학교일정(events) — 보고 있는 달(또는 명시한 달) 기준 조회(school-desk 연동분 포함).
+  // 일정(events) — 보고 있는 달(또는 명시한 달) 기준 조회(school-desk 연동분 포함).
   // month 인자: 다른 달로 저장 직후 setViewMonth 가 반영되기 전(viewMonthRef 미갱신) race 방지용.
   const fetchEvents = async (month?: Date) => {
     const vm = month ?? viewMonthRef.current;
@@ -239,7 +209,10 @@ export default function CalendarScreen() {
     useCallback(() => {
       if (!hasLoadedRef.current) {
         hasLoadedRef.current = true;
-        fetchSchedules();
+        // 레거시 개인일정(routines 편법 저장)을 정식 events 로 1회 이관 → 스쿨데스크 연동 가능
+        migrateLegacySchedules().then((r) => {
+          if (r.migrated > 0) fetchEvents();
+        });
       }
       fetchTasks();
       fetchEvents();
@@ -248,25 +221,13 @@ export default function CalendarScreen() {
 
   // 스쿨데스크/웹 변경 실시간 반영 (변경신호 푸시 → refetch)
   useSyncRefresh(["tasks", "events", "routines"], () => {
-    fetchSchedules();
     fetchTasks();
     fetchEvents();
   });
 
-  // 잠금화면 알람에서 "일정 삭제" 누른 경우 → pending delete 처리
+  // 잠금화면 알람에서 "일정 삭제" 누른 경우 → pending delete 처리(공용 모듈)
   const processPendingScheduleDelete = useCallback(async () => {
-    if (Platform.OS !== "android" || !NativeModules.AlarmModule) return;
-    try {
-      const pending = await NativeModules.AlarmModule.getPendingDelete();
-      if (pending?.id && pending.type === "schedule") {
-        await api.deleteRoutine(pending.id);
-        await NativeModules.AlarmModule.clearPendingDelete();
-      }
-    } catch (e) {
-      try {
-        await NativeModules.AlarmModule.clearPendingDelete();
-      } catch {}
-    }
+    await processPendingDelete();
   }, []);
 
   // 앱 복귀 시 pending delete 처리 후 새로고침
@@ -278,7 +239,6 @@ export default function CalendarScreen() {
         nextState === "active"
       ) {
         processPendingScheduleDelete().then(() => {
-          fetchSchedules();
           fetchTasks();
           fetchEvents();
         });
@@ -290,22 +250,12 @@ export default function CalendarScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchSchedules(), fetchTasks(), fetchEvents()]);
+    await Promise.all([fetchTasks(), fetchEvents()]);
     setRefreshing(false);
   };
 
   // --- 날짜별 집계 ---
   const dayKey = (d: Date) => format(d, "yyyy-MM-dd");
-
-  const schedulesForDay = useCallback(
-    (day: Date): Routine[] => {
-      const key = dayKey(day);
-      return schedules
-        .filter((s) => parseScheduleMeta(s.description)?.date === key)
-        .sort((a, b) => getScheduleTime(a).localeCompare(getScheduleTime(b)));
-    },
-    [schedules],
-  );
 
   const tasksForDay = useCallback(
     (day: Date): Task[] => {
@@ -317,7 +267,7 @@ export default function CalendarScreen() {
     [deadlineTasks],
   );
 
-  // 학교일정: startAt~endAt(로컬 날짜) 범위에 해당 날짜가 들어오면 표시(멀티데이 포함)
+  // 일정: startAt~endAt(로컬 날짜) 범위에 해당 날짜가 들어오면 표시(멀티데이 포함)
   const eventsForDay = useCallback(
     (day: Date): CalendarEvent[] => {
       const key = dayKey(day);
@@ -333,15 +283,68 @@ export default function CalendarScreen() {
     [events],
   );
 
-  const todaySchedules = schedulesForDay(selectedDate);
+  // 개인일정은 드래그 정렬(order) 우선, 그다음 시간순
+  const personalForDay = useCallback(
+    (day: Date): CalendarEvent[] =>
+      eventsForDay(day)
+        .filter(isPersonalEvent)
+        .sort(
+          (a, b) =>
+            (a.order ?? 0) - (b.order ?? 0) ||
+            (a.startAt || "").localeCompare(b.startAt || ""),
+        ),
+    [eventsForDay],
+  );
+
+  const schoolForDay = useCallback(
+    (day: Date): CalendarEvent[] => eventsForDay(day).filter((e) => !isPersonalEvent(e)),
+    [eventsForDay],
+  );
+
   const todayDeadlineTasks = tasksForDay(selectedDate);
-  const todayEvents = eventsForDay(selectedDate);
-  const allDisplayed = [...todaySchedules];
+  const todayEvents = schoolForDay(selectedDate);
+  const allDisplayed = personalForDay(selectedDate);
 
   const weeks = useMemo(() => monthWeeks(viewMonth), [viewMonth]);
 
+  // 그리드용 날짜별 항목 — 셀마다 events 전체를 다시 훑지 않도록 한 번만 계산한다.
+  const gridItems = useMemo(() => {
+    const map = new Map<string, { key: string; label: string; color: string }[]>();
+    const push = (k: string, v: { key: string; label: string; color: string }) => {
+      const arr = map.get(k);
+      if (arr) arr.push(v);
+      else map.set(k, [v]);
+    };
+    const days = weeks.flat();
+    const first = dayKey(days[0]);
+    const last = dayKey(days[days.length - 1]);
+    // 개인 → 학교 → 기한 할일 순서로 쌓는다(셀 표시 우선순위)
+    for (const pass of [true, false]) {
+      for (const e of events) {
+        if (!e.startAt || isPersonalEvent(e) !== pass) continue;
+        const s0 = format(parseISO(e.startAt), "yyyy-MM-dd");
+        const e0 = e.endAt ? format(parseISO(e.endAt), "yyyy-MM-dd") : s0;
+        for (const d of days) {
+          const k = dayKey(d);
+          if (k < s0 || k > e0 || k < first || k > last) continue;
+          push(k, {
+            key: `${pass ? "p" : "s"}-${e.id}`,
+            label: e.title,
+            color: pass ? PERSONAL_COLOR : SCHOOL_COLOR,
+          });
+        }
+      }
+    }
+    for (const t of deadlineTasks) {
+      if (!t.dueDate) continue;
+      const k = dayKey(parseISO(t.dueDate));
+      if (k < first || k > last) continue;
+      push(k, { key: `t-${t.id}`, label: t.title, color: TASK_COLOR });
+    }
+    return map;
+  }, [events, deadlineTasks, weeks]);
+
   const openAddModal = () => {
-    setEditingSchedule(null);
     setEditingEvent(null);
     setEntryType("personal");
     setEventCategory("일반");
@@ -360,32 +363,12 @@ export default function CalendarScreen() {
     setShowModal(true);
   };
 
-  const openEditModal = (schedule: Routine) => {
-    setEditingSchedule(schedule);
-    setEditingEvent(null);
-    setEntryType("personal");
-    setEventName(schedule.name);
-    const meta = parseScheduleMeta(schedule.description);
-    setEventPlace(meta?.place || "");
-    const ed = meta?.date ? parseISO(meta.date) : new Date();
-    setEventDate(ed);
-    setEventCalendarMonth(ed);
-    setEventNotify(meta?.notify !== false);
-    if (schedule.startTime) {
-      const [h, m] = schedule.startTime.split(":");
-      const { hour, am } = from24Hour(parseInt(h));
-      setEventHour(hour);
-      setEventMinute(parseInt(m));
-      setEventIsAM(am);
-    }
-    setShowModal(true);
-  };
-
-  // 학교일정(event) 수정 모달
+  // 일정(event) 수정 모달 — 개인/학교 공용(카테고리로 구분)
   const openEditEventModal = (ev: CalendarEvent) => {
-    setEditingSchedule(null);
+    const personal = isPersonalEvent(ev);
     setEditingEvent(ev);
-    setEntryType("school");
+    setEntryType(personal ? "personal" : "school");
+    setEventNotify(readNotify(ev));
     setEventName(ev.title);
     setEventPlace(ev.location || "");
     setEventCategory(ev.category || "일반");
@@ -404,7 +387,8 @@ export default function CalendarScreen() {
   // 학교일정(event) 생성/수정 — startAt/endAt ISO 변환은 school-desk 규약과 동일
   // (시간일정=로컬→UTC, 종일=날짜기반 UTC자정 고정으로 TZ 불변)
   const submitEvent = async (dateStr: string, startTime: string) => {
-    const allDay = eventAllDay;
+    const personal = entryType === "personal";
+    const allDay = personal ? false : eventAllDay;
     const baseStart = new Date(`${dateStr}T${startTime}:00`);
     const startAt = allDay
       ? `${dateStr}T00:00:00.000Z`
@@ -412,14 +396,13 @@ export default function CalendarScreen() {
     const endAt = allDay
       ? `${dateStr}T00:00:00.000Z`
       : new Date(baseStart.getTime() + 60 * 60 * 1000).toISOString();
-    const recurrence = eventRecurrence;
-    const reminderSettings =
-      editingEvent?.reminderSettings ||
-      JSON.stringify({
-        reminderMinutes: 10,
-        recurrenceEnd: null,
-        isCompleted: 0,
-      });
+    const recurrence = personal ? null : eventRecurrence;
+    const reminderSettings = JSON.stringify({
+      reminderMinutes: 10,
+      recurrenceEnd: null,
+      isCompleted: 0,
+      notify: personal ? eventNotify : true,
+    });
     const payload = {
       title: eventName.trim(),
       // E2EE: 제목·설명·장소가 한 묶음으로 암호화되므로 수정 시 기존 설명을 함께 보내야
@@ -429,8 +412,9 @@ export default function CalendarScreen() {
       startAt,
       endAt,
       isAllDay: allDay,
-      color: editingEvent?.color || SCHOOL_COLOR,
-      category: eventCategory,
+      color:
+        editingEvent?.color || (personal ? PERSONAL_COLOR : SCHOOL_COLOR),
+      category: personal ? PERSONAL_CATEGORY : eventCategory,
       recurrence,
       isRecurring: !!recurrence,
       reminderSettings,
@@ -443,14 +427,29 @@ export default function CalendarScreen() {
     }
     const targetMonth = parseISO(dateStr);
     try {
+      let savedId = editing?.id;
       if (editing) {
         await api.updateEvent(editing.id, payload);
       } else {
-        await api.createEvent(payload as any);
+        const created = await api.createEvent(payload as any);
+        savedId = created?.id;
+      }
+      // 개인일정 알람(잠금화면) — 알람 태그 type 은 "schedule" 유지.
+      // ⚠️ 알람 실패가 "저장 실패"로 보이면 사용자가 재시도해 일정이 중복 생성된다 →
+      //    저장은 이미 끝났으므로 알람 오류는 여기서만 삼킨다.
+      if (personal && savedId) {
+        try {
+          const when = new Date(`${dateStr}T${startTime}:00`);
+          if (eventNotify && scheduleAlarmEnabled && when.getTime() > Date.now()) {
+            await scheduleTaskAlarm(savedId, payload.title, when, "schedule");
+          } else {
+            await cancelTaskAlarm(savedId);
+          }
+        } catch {}
       }
       await fetchEvents(targetMonth);
     } catch {
-      Alert.alert("오류", "학교일정 저장에 실패했습니다");
+      Alert.alert("오류", "일정 저장에 실패했습니다");
       fetchEvents(targetMonth);
     } finally {
       setIsSubmitting(false);
@@ -484,147 +483,51 @@ export default function CalendarScreen() {
     const startTime = `${String(hour24).padStart(2, "0")}:${String(finalMinute).padStart(2, "0")}`;
     const dateStr = format(eventDate, "yyyy-MM-dd");
 
-    // 학교일정이면 events 경로로 분기(개인일정 routine 로직은 아래 그대로)
-    if (entryType === "school") {
-      await submitEvent(dateStr, startTime);
-      return;
-    }
-
-    const meta: ScheduleMeta = {
-      date: dateStr,
-      place: eventPlace.trim() || undefined,
-      notify: eventNotify,
-    };
-    const payload = {
-      name: eventName.trim(),
-      description: JSON.stringify(meta),
-      type: "CUSTOM" as any,
-      startTime,
-    };
-
-    const isEditing = !!editingSchedule;
-    const editId = editingSchedule?.id;
-
-    setShowModal(false);
-    // 선택일을 추가한 일정의 날짜로 이동(바로 보이도록)
-    setSelectedDate(parseISO(dateStr));
-    if (!isSameMonth(parseISO(dateStr), viewMonth)) {
-      setViewMonth(startOfMonth(parseISO(dateStr)));
-    }
-    let tempId = "";
-    if (!isEditing) {
-      tempId = `temp-${Date.now()}`;
-      const temp = {
-        id: tempId,
-        ...payload,
-        items: [],
-        completedItemsToday: [],
-        isActive: true,
-        endTime: null,
-        createdAt: new Date().toISOString(),
-      } as any;
-      setSchedules((prev) => [temp, ...prev]);
-    } else {
-      setSchedules((prev) =>
-        prev.map((s) => (s.id === editId ? { ...s, ...payload } : s)),
-      );
-    }
-
-    try {
-      if (isEditing && editId) {
-        await api.updateRoutine(editId, payload);
-        if (eventNotify && scheduleAlarmEnabled) {
-          const alarmDate = new Date(`${dateStr}T${startTime}:00`);
-          if (alarmDate.getTime() > Date.now()) {
-            await scheduleTaskAlarm(editId, payload.name, alarmDate, "schedule");
-          }
-        } else {
-          await cancelTaskAlarm(editId);
-        }
-      } else {
-        const created = (await api.createRoutine(payload)) as any;
-        if (created?.id && tempId) {
-          setSchedules((prev) =>
-            prev.map((s) => (s.id === tempId ? { ...s, id: created.id } : s)),
-          );
-          if (eventNotify && scheduleAlarmEnabled) {
-            const alarmDate = new Date(`${dateStr}T${startTime}:00`);
-            if (alarmDate.getTime() > Date.now()) {
-              await scheduleTaskAlarm(
-                created.id,
-                payload.name,
-                alarmDate,
-                "schedule",
-              );
-            }
-          }
-        }
-      }
-    } catch {
-      Alert.alert("오류", "저장에 실패했습니다");
-      fetchSchedules();
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDelete = (schedule: Routine) => {
-    Alert.alert("삭제", `"${schedule.name}" 삭제할까요?`, [
-      {
-        text: "취소",
-        style: "cancel",
-        onPress: () => swipeableRefs.current.get(schedule.id)?.close(),
-      },
-      {
-        text: "삭제",
-        style: "destructive",
-        onPress: async () => {
-          const prev = [...schedules];
-          setSchedules((s) => s.filter((x) => x.id !== schedule.id));
-          await cancelTaskAlarm(schedule.id);
-          try {
-            await api.deleteRoutine(schedule.id);
-          } catch {
-            setSchedules(prev);
-            Alert.alert("오류", "삭제에 실패했습니다");
-          }
-        },
-      },
-    ]);
+    // 개인·학교 모두 events 로 저장(개인 = category "개인")
+    await submitEvent(dateStr, startTime);
   };
 
   const handleDeleteEvent = (ev: CalendarEvent) => {
-    Alert.alert("삭제", `"${ev.title}" 학교일정을 삭제할까요?`, [
-      {
-        text: "취소",
-        style: "cancel",
-        onPress: () => swipeableRefs.current.get(`event-${ev.id}`)?.close(),
-      },
-      {
-        text: "삭제",
-        style: "destructive",
-        onPress: async () => {
-          const prev = [...events];
-          setEvents((e) => e.filter((x) => x.id !== ev.id));
-          try {
-            await api.deleteEvent(ev.id);
-          } catch {
-            setEvents(prev);
-            Alert.alert("오류", "삭제에 실패했습니다");
-          }
+    const personal = isPersonalEvent(ev);
+    Alert.alert(
+      "삭제",
+      `"${ev.title}"${personal ? "" : " 학교일정"}을(를) 삭제할까요?`,
+      [
+        {
+          text: "취소",
+          style: "cancel",
+          onPress: () => swipeableRefs.current.get(`event-${ev.id}`)?.close(),
         },
-      },
-    ]);
+        {
+          text: "삭제",
+          style: "destructive",
+          onPress: async () => {
+            const prev = [...events];
+            setEvents((e) => e.filter((x) => x.id !== ev.id));
+            try {
+              await api.deleteEvent(ev.id);
+              // 서버 삭제가 확정된 뒤에 알람 취소 — 실패했는데 알람만 사라지는 일 방지
+              if (personal) await cancelTaskAlarm(ev.id);
+            } catch {
+              setEvents(prev);
+              Alert.alert("오류", "삭제에 실패했습니다");
+            }
+          },
+        },
+      ],
+    );
   };
 
-  const handleShare = (schedule: Routine) => {
-    const meta = parseScheduleMeta(schedule.description);
-    const dateStr = meta?.date
-      ? format(parseISO(meta.date), "yyyy년 M월 d일 (EEEE)", { locale: ko })
+  const eventTime = (ev: CalendarEvent): string =>
+    ev.isAllDay || !ev.startAt ? "" : format(parseISO(ev.startAt), "HH:mm");
+
+  const handleShare = (ev: CalendarEvent) => {
+    const dateStr = ev.startAt
+      ? format(parseISO(ev.startAt), "yyyy년 M월 d일 (EEEE)", { locale: ko })
       : "";
-    const timeStr = schedule.startTime || "";
-    const placeStr = meta?.place ? `장소: ${meta.place}\n` : "";
-    const message = `📅 또박또박 일정 공유\n\n일정: ${schedule.name}\n날짜: ${dateStr}\n시간: ${timeStr}\n${placeStr}\n또박또박 앱에서 확인하세요!`;
+    const timeStr = ev.isAllDay ? "종일" : eventTime(ev);
+    const placeStr = ev.location ? `장소: ${ev.location}\n` : "";
+    const message = `📅 또박또박 일정 공유\n\n일정: ${ev.title}\n날짜: ${dateStr}\n시간: ${timeStr}\n${placeStr}\n또박또박 앱에서 확인하세요!`;
     Share.share({ message });
   };
 
@@ -632,11 +535,11 @@ export default function CalendarScreen() {
     const dayStr = format(selectedDate, "yyyy년 M월 d일 (EEEE)", { locale: ko });
     let message = `📅 또박또박 - ${dayStr} 일정\n`;
     if (allDisplayed.length > 0) {
-      allDisplayed.forEach((s) => {
-        const meta = parseScheduleMeta(s.description);
-        const time = s.startTime ? formatTime12(s.startTime) : "";
-        const place = meta?.place ? ` @ ${meta.place}` : "";
-        message += `\n• ${time ? time + " " : ""}${s.name}${place}`;
+      allDisplayed.forEach((ev) => {
+        const t = eventTime(ev);
+        const time = t ? formatTime12(t) : "";
+        const place = ev.location ? ` @ ${ev.location}` : "";
+        message += `\n• ${time ? time + " " : ""}${ev.title}${place}`;
       });
     } else {
       message += `\n일정이 없습니다.`;
@@ -645,18 +548,16 @@ export default function CalendarScreen() {
     Share.share({ message });
   };
 
-  const copySchedule = (schedule: Routine) => {
-    const meta = parseScheduleMeta(schedule.description);
-    const time = schedule.startTime ? formatTime12(schedule.startTime) : "";
-    const place = meta?.place ? ` (${meta.place})` : "";
-    Clipboard.setStringAsync(
-      `${time ? time + " " : ""}${schedule.name}${place}`,
-    );
-    swipeableRefs.current.get(schedule.id)?.close();
+  const copySchedule = (ev: CalendarEvent) => {
+    const t = eventTime(ev);
+    const time = t ? formatTime12(t) : "";
+    const place = ev.location ? ` (${ev.location})` : "";
+    Clipboard.setStringAsync(`${time ? time + " " : ""}${ev.title}${place}`);
+    swipeableRefs.current.get(`event-${ev.id}`)?.close();
   };
 
   const renderLeftActions =
-    (schedule: Routine) =>
+    (schedule: CalendarEvent) =>
     (
       _progress: Animated.AnimatedInterpolation<number>,
       dragX: Animated.AnimatedInterpolation<number>,
@@ -680,7 +581,7 @@ export default function CalendarScreen() {
     };
 
   const renderRightActions =
-    (schedule: Routine) =>
+    (schedule: CalendarEvent) =>
     (
       _progress: Animated.AnimatedInterpolation<number>,
       dragX: Animated.AnimatedInterpolation<number>,
@@ -694,7 +595,7 @@ export default function CalendarScreen() {
         <Animated.View style={[styles.swipeDelete, { transform: [{ scale }] }]}>
           <TouchableOpacity
             style={styles.swipeDeleteBtn}
-            onPress={() => handleDelete(schedule)}
+            onPress={() => handleDeleteEvent(schedule)}
           >
             <Trash2 size={20} color="#fff" />
             <Text style={styles.swipeDeleteText}>삭제</Text>
@@ -709,25 +610,23 @@ export default function CalendarScreen() {
     return `${am ? "오전" : "오후"} ${hour}:${String(m).padStart(2, "0")}`;
   };
 
-  const isPast = (schedule: Routine) => {
-    const meta = parseScheduleMeta(schedule.description);
-    if (!meta?.date || !schedule.startTime) return false;
-    const dt = new Date(`${meta.date}T${schedule.startTime}:00`);
-    return dt.getTime() < Date.now();
+  const isPast = (ev: CalendarEvent) => {
+    if (!ev.startAt || ev.isAllDay) return false;
+    return parseISO(ev.startAt).getTime() < Date.now();
   };
 
   const renderItem = ({
     item: schedule,
     drag,
     isActive,
-  }: RenderItemParams<Routine>) => {
-    const meta = parseScheduleMeta(schedule.description);
+  }: RenderItemParams<CalendarEvent>) => {
     const past = isPast(schedule);
+    const t = eventTime(schedule);
     return (
       <ScaleDecorator>
         <Swipeable
           ref={(ref) => {
-            if (ref) swipeableRefs.current.set(schedule.id, ref);
+            if (ref) swipeableRefs.current.set(`event-${schedule.id}`, ref);
           }}
           renderLeftActions={renderLeftActions(schedule)}
           renderRightActions={renderRightActions(schedule)}
@@ -739,7 +638,7 @@ export default function CalendarScreen() {
           activeOffsetX={[-8, 8]}
           onSwipeableOpen={(direction) => {
             if (direction === "left") copySchedule(schedule);
-            else handleDelete(schedule);
+            else handleDeleteEvent(schedule);
           }}
         >
           <TouchableOpacity
@@ -750,9 +649,11 @@ export default function CalendarScreen() {
                 backgroundColor: colors.card,
                 padding: cardPadding,
                 opacity: isActive ? 0.8 : 1,
+                borderLeftColor: PERSONAL_COLOR,
+                borderLeftWidth: 3,
               },
             ]}
-            onPress={() => openEditModal(schedule)}
+            onPress={() => openEditEventModal(schedule)}
             onLongPress={drag}
             disabled={isActive}
           >
@@ -768,9 +669,9 @@ export default function CalendarScreen() {
                   },
                 ]}
               >
-                {schedule.name}
+                {schedule.title}
               </Text>
-              {meta?.place && (
+              {schedule.location ? (
                 <View
                   style={[
                     styles.placeRow,
@@ -784,13 +685,13 @@ export default function CalendarScreen() {
                       { color: colors.mutedForeground, fontSize: scaledFont(11) },
                     ]}
                   >
-                    {meta.place}
+                    {schedule.location}
                   </Text>
                 </View>
-              )}
+              ) : null}
             </View>
             <View style={styles.scheduleRight}>
-              {schedule.startTime && (
+              {t ? (
                 <Text
                   style={[
                     styles.timeText,
@@ -800,15 +701,23 @@ export default function CalendarScreen() {
                     },
                   ]}
                 >
-                  {formatTime12(schedule.startTime)}
+                  {formatTime12(t)}
                 </Text>
-              )}
+              ) : null}
               <TouchableOpacity
                 onPress={() => handleShare(schedule)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{ padding: 2 }}
               >
                 <Share2 size={14} color={colors.mutedForeground} />
+              </TouchableOpacity>
+              {/* 명시적 삭제 버튼 — 스와이프만으로는 삭제가 있는 줄 모른다는 피드백 반영 */}
+              <TouchableOpacity
+                onPress={() => handleDeleteEvent(schedule)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ padding: 2 }}
+              >
+                <Trash2 size={14} color="#ef4444" />
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -954,6 +863,13 @@ export default function CalendarScreen() {
             >
               {timeLabel}
             </Text>
+            <TouchableOpacity
+              onPress={() => handleDeleteEvent(ev)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ padding: 2 }}
+            >
+              <Trash2 size={14} color="#ef4444" />
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Swipeable>
@@ -1025,9 +941,9 @@ export default function CalendarScreen() {
               const selected = isSameDay(day, selectedDate);
               const today = isSameDay(day, new Date());
               const dow = day.getDay();
-              const hasSchedule = schedulesForDay(day).length > 0;
-              const hasTask = tasksForDay(day).length > 0;
-              const hasEvent = eventsForDay(day).length > 0;
+              const dayItems = gridItems.get(dayKey(day)) ?? [];
+              const shown = dayItems.slice(0, 2);
+              const overflow = dayItems.length - shown.length;
               return (
                 <TouchableOpacity
                   key={day.toISOString()}
@@ -1068,21 +984,32 @@ export default function CalendarScreen() {
                       {day.getDate()}
                     </Text>
                   </View>
-                  <View style={styles.dotRow}>
-                    {hasSchedule && (
-                      <View
-                        style={[styles.dot, { backgroundColor: colors.primary }]}
-                      />
-                    )}
-                    {hasEvent && (
-                      <View
-                        style={[styles.dot, { backgroundColor: SCHOOL_COLOR }]}
-                      />
-                    )}
-                    {hasTask && (
-                      <View
-                        style={[styles.dot, { backgroundColor: TASK_COLOR }]}
-                      />
+                  <View style={styles.cellItems}>
+                    {shown.map((it) => (
+                      <Text
+                        key={it.key}
+                        numberOfLines={1}
+                        style={[
+                          styles.cellItemText,
+                          {
+                            color: it.color,
+                            backgroundColor: it.color + "1A",
+                            opacity: inMonth ? 1 : 0.45,
+                          },
+                        ]}
+                      >
+                        {it.label}
+                      </Text>
+                    ))}
+                    {overflow > 0 && (
+                      <Text
+                        style={[
+                          styles.cellMoreText,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        +{overflow}
+                      </Text>
                     )}
                   </View>
                 </TouchableOpacity>
@@ -1134,15 +1061,24 @@ export default function CalendarScreen() {
           activationDistance={20}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          onDragEnd={({ data }: { data: Routine[] }) => {
-            const ids = new Set(data.map((d) => d.id));
-            setSchedules((prev) => [...data, ...prev.filter((s) => !ids.has(s.id))]);
+          onDragEnd={({ data }: { data: CalendarEvent[] }) => {
+            // 낙관적 반영: 화면의 개인일정 순서를 order 로 확정하고 서버에 저장
+            const orderMap = new Map(data.map((d, i) => [d.id, i]));
+            setEvents((prev) =>
+              prev.map((e) =>
+                orderMap.has(e.id) ? { ...e, order: orderMap.get(e.id)! } : e,
+              ),
+            );
             api
               .reorder(
-                "routine",
-                data.map((r, i) => ({ id: r.id, order: i })),
+                "event",
+                data.map((e, i) => ({ id: e.id, order: i })),
               )
-              .catch(() => {});
+              .catch(() => {
+                // 실패를 삼키면 화면 순서와 서버 순서가 조용히 갈라진다 → 되돌리고 알림
+                Alert.alert("오류", "순서 저장에 실패했습니다");
+                fetchEvents();
+              });
           }}
           refreshing={refreshing}
           onRefresh={onRefresh}
@@ -1171,7 +1107,7 @@ export default function CalendarScreen() {
                   </Text>
                 </View>
                 {todayEvents.map((ev) => renderEventCard(ev))}
-                {todaySchedules.length > 0 && (
+                {allDisplayed.length > 0 && (
                   <Text
                     style={{
                       fontSize: 11,
@@ -1376,12 +1312,12 @@ export default function CalendarScreen() {
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.foreground }]}>
                 {editingEvent
-                  ? "학교일정 수정"
-                  : editingSchedule
-                    ? "일정 수정"
-                    : entryType === "school"
-                      ? "새 학교일정"
-                      : "새 일정"}
+                  ? entryType === "school"
+                    ? "학교일정 수정"
+                    : "일정 수정"
+                  : entryType === "school"
+                    ? "새 학교일정"
+                    : "새 일정"}
               </Text>
               <TouchableOpacity onPress={() => setShowModal(false)}>
                 <X size={22} color={colors.mutedForeground} />
@@ -1390,7 +1326,7 @@ export default function CalendarScreen() {
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 480 }}>
               {/* 일정 종류 토글(추가 시에만) */}
-              {!editingSchedule && !editingEvent && (
+              {!editingEvent && (
                 <View style={styles.typeToggleRow}>
                   {(
                     [
@@ -1940,7 +1876,7 @@ export default function CalendarScreen() {
             </ScrollView>
 
             <View style={{ flexDirection: "row", gap: 8 }}>
-              {!editingSchedule && !editingEvent && (
+              {!editingEvent && (
                 <TouchableOpacity
                   style={[
                     styles.submitBtn,
@@ -1956,7 +1892,6 @@ export default function CalendarScreen() {
                   onPress={async () => {
                     await handleSubmit();
                     setTimeout(() => {
-                      setEditingSchedule(null);
                       setEditingEvent(null);
                       setEventName("");
                       setEventPlace("");
@@ -1986,7 +1921,7 @@ export default function CalendarScreen() {
                 <Text style={styles.submitText}>
                   {isSubmitting
                     ? "저장 중..."
-                    : editingSchedule || editingEvent
+                    : editingEvent
                       ? "수정"
                       : "추가"}
                 </Text>
@@ -2014,17 +1949,32 @@ const styles = StyleSheet.create({
   weekHeaderText: { flex: 1, textAlign: "center", fontSize: 12, fontWeight: "600" },
   grid: { paddingHorizontal: 4, paddingTop: 2 },
   weekRow: { flexDirection: "row" },
-  cell: { flex: 1, aspectRatio: 1, alignItems: "center", justifyContent: "flex-start", paddingTop: 4 },
+  // aspectRatio 대신 minHeight — 셀 안에 제목 2줄이 들어가야 하므로 세로로 늘어날 수 있어야 한다.
+  cell: {
+    flex: 1,
+    minHeight: 62,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingTop: 3,
+    paddingHorizontal: 1,
+  },
   dayNumWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
   },
   dayNum: { fontSize: 14, fontWeight: "600" },
-  dotRow: { flexDirection: "row", gap: 2, marginTop: 2, height: 6 },
-  dot: { width: 5, height: 5, borderRadius: 3 },
+  cellItems: { width: "100%", marginTop: 2, gap: 1 },
+  cellItemText: {
+    fontSize: 9,
+    lineHeight: 12,
+    paddingHorizontal: 2,
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  cellMoreText: { fontSize: 8, lineHeight: 10, paddingHorizontal: 2 },
   detailHeader: {
     flexDirection: "row",
     alignItems: "center",

@@ -39,6 +39,7 @@ export interface CalendarEvent {
   isRecurring?: boolean;
   recurrence?: string | null;
   reminderSettings?: string | null;
+  order?: number; // 드래그 정렬(서버 저장) — 같은 날 안에서의 표시 순서
   createdAt: string;
   updatedAt: string;
 }
