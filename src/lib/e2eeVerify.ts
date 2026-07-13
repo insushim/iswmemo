@@ -5,7 +5,7 @@
 // 않아서 사용자가 원인을 알 수 없었다. → 넣자마자 실제로 열어보고 알려준다.
 
 import { api } from "./api";
-import { getE2EEKey } from "./e2ee-store";
+import { getE2EEKeysForDecrypt } from "./e2ee-store";
 import { isEncrypted, decrypt } from "./e2ee";
 
 export type E2EECheck =
@@ -16,8 +16,8 @@ export type E2EECheck =
 
 /** 서버의 암호화된 원본을 복호화해 본다. 화면 표시용 복호는 거치지 않는다. */
 export async function verifyE2EEAgainstServer(): Promise<E2EECheck> {
-  const key = await getE2EEKey();
-  if (!key) return "nothing";
+  const keys = await getE2EEKeysForDecrypt();
+  if (!keys.length) return "nothing";
 
   let raw: { content?: string | null }[] = [];
   try {
@@ -36,11 +36,13 @@ export async function verifyE2EEAgainstServer(): Promise<E2EECheck> {
   if (locked.length === 0) return "nothing";
 
   for (const n of locked) {
-    try {
-      const obj = JSON.parse(decrypt(n.content as string, key));
-      if (typeof obj?.c === "string") return "ok";
-    } catch {
-      // 다음 항목으로 — 한 건이 깨졌을 수도 있으니 전부 실패해야 mismatch 로 본다.
+    for (const k of keys) {
+      try {
+        const obj = JSON.parse(decrypt(n.content as string, k));
+        if (typeof obj?.c === "string") return "ok";
+      } catch {
+        // 다음 키/항목으로 — 전부 실패해야 mismatch 로 본다.
+      }
     }
   }
   return "mismatch";

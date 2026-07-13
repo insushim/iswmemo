@@ -38,6 +38,7 @@ import { useAuthStore } from "../store/auth";
 import {
   hasE2EEKey,
   setE2EEPassphrase,
+  addLegacyPassphrase,
   clearE2EEKey,
 } from "../lib/e2ee-store";
 import { TextInput } from "react-native";
@@ -93,6 +94,8 @@ export default function SettingsScreen() {
   // E2EE(종단간 암호화)
   const [e2eeOn, setE2eeOn] = useState(false);
   const [showE2EE, setShowE2EE] = useState(false);
+  const [showLegacyPass, setShowLegacyPass] = useState(false);
+  const [legacyPass, setLegacyPass] = useState("");
   const [pass1, setPass1] = useState("");
   const [pass2, setPass2] = useState("");
   const [e2eeBusy, setE2eeBusy] = useState(false);
@@ -170,6 +173,31 @@ export default function SettingsScreen() {
           "서버에 암호화된 데이터가 없어 비교할 수 없습니다.",
         );
       }
+    } finally {
+      setE2eeBusy(false);
+    }
+  };
+
+  // 안 열리는 메모가 남았을 때: 그 메모를 암호화한 "다른/예전 암호"를 읽기 전용으로 추가.
+  // 현재 암호는 그대로 두므로 새로 만드는 항목은 계속 현재 암호로 암호화된다.
+  const handleAddLegacyPass = async () => {
+    if (legacyPass.trim().length < 8) {
+      Alert.alert("암호 오류", "암호는 8자 이상입니다.");
+      return;
+    }
+    if (!user?.email) return;
+    setE2eeBusy(true);
+    try {
+      await addLegacyPassphrase(legacyPass, user.email);
+      setLegacyPass("");
+      setShowLegacyPass(false);
+      const check = await verifyE2EEAgainstServer();
+      Alert.alert(
+        check === "ok" ? "열렸습니다" : "여전히 안 열립니다",
+        check === "ok"
+          ? "이 암호로 잠겨 있던 항목을 열 수 있게 됐습니다. 목록을 새로고침하면 내용이 보입니다."
+          : "이 암호로도 잠긴 항목을 열지 못했습니다. 다른 암호를 시도해 보세요.",
+      );
     } finally {
       setE2eeBusy(false);
     }
@@ -550,13 +578,22 @@ export default function SettingsScreen() {
             onPress={() => (e2eeOn ? handleClearE2EE() : setShowE2EE(true))}
           />
           {e2eeOn && (
-            <SettingItem
-              icon={Lock}
-              iconColor="#3b82f6"
-              title="암호 확인 (스쿨데스크와 같은지)"
-              subtitle="서버의 암호화된 데이터를 실제로 열어봅니다"
-              onPress={handleVerifyE2EE}
-            />
+            <>
+              <SettingItem
+                icon={Lock}
+                iconColor="#3b82f6"
+                title="암호 확인 (스쿨데스크와 같은지)"
+                subtitle="서버의 암호화된 데이터를 실제로 열어봅니다"
+                onPress={handleVerifyE2EE}
+              />
+              <SettingItem
+                icon={Lock}
+                iconColor="#f59e0b"
+                title="안 열리는 메모 풀기"
+                subtitle="예전/다른 암호를 추가합니다 (현재 암호는 그대로)"
+                onPress={() => setShowLegacyPass(true)}
+              />
+            </>
           )}
         </View>
 
@@ -689,6 +726,67 @@ export default function SettingsScreen() {
               >
                 <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
                   {e2eeBusy ? "설정 중…" : "암호화 설정"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 예전/다른 암호 추가 모달 — 읽기 전용 키 추가 */}
+      <Modal
+        visible={showLegacyPass}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowLegacyPass(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                안 열리는 메모 풀기
+              </Text>
+              <TouchableOpacity onPress={() => setShowLegacyPass(false)}>
+                <X size={22} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ padding: 20, gap: 12 }}>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 19 }}>
+                자물쇠로 남아 있는 메모는 <Text style={{ fontWeight: "700" }}>다른 암호</Text>로
+                잠긴 것입니다. 그 암호를 넣으면 앞으로는 자동으로 열립니다.
+                현재 암호는 바뀌지 않습니다.
+              </Text>
+              <TextInput
+                placeholder="예전 암호 / 스쿨데스크 암호"
+                placeholderTextColor={colors.mutedForeground}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={legacyPass}
+                onChangeText={setLegacyPass}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  color: colors.foreground,
+                  fontSize: 15,
+                }}
+              />
+              <TouchableOpacity
+                disabled={e2eeBusy}
+                onPress={handleAddLegacyPass}
+                style={{
+                  backgroundColor: colors.primary,
+                  borderRadius: 10,
+                  paddingVertical: 14,
+                  alignItems: "center",
+                  opacity: e2eeBusy ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
+                  {e2eeBusy ? "확인 중…" : "이 암호로 열어보기"}
                 </Text>
               </TouchableOpacity>
             </View>

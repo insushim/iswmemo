@@ -4,7 +4,7 @@ import { persistentGet, persistentSet, persistentDelete } from "./storage";
 import { getSyncOriginId } from "./sync-origin";
 import { reportError } from "./errorReporter";
 import { encrypt, decrypt, isEncrypted } from "./e2ee";
-import { getE2EEKey } from "./e2ee-store";
+import { getE2EEKey, getE2EEKeysForDecrypt } from "./e2ee-store";
 import type {
   Task,
   Habit,
@@ -170,47 +170,54 @@ function firstLine(s: string, n = 50): string {
 // 빈 값으로 바꾸면 사용자가 그 상태로 저장 시 서버 암호문을 파괴하므로 절대 비우지 않는다.
 // 서버 title 은 이미 '🔒 메모/할일/일정' placeholder 라 그대로도 자물쇠로 보인다.
 
-/** note 복호화. 평문/복호불가는 원본 유지. */
-function decryptNote(n: Note, key: Uint8Array | null): Note {
-  if (!key || !isEncrypted(n.content)) return n;
-  try {
-    const obj = JSON.parse(decrypt(n.content, key));
-    const content = typeof obj?.c === "string" ? obj.c : "";
-    return { ...n, content, title: firstLine(content) || n.title };
-  } catch {
-    return n; // 암호문 보존
+/**
+ * 암호문 하나를 여러 키로 시도해 푼다(현재 키 → 예전 암호로 만든 키들).
+ * 암호를 바꿔도 옛 암호로 암호화된 항목이 그대로 열린다 — 사용자가 뭘 누를 필요 없다.
+ */
+function tryDecrypt(raw: string, keys: Uint8Array[]): Record<string, unknown> | null {
+  for (const k of keys) {
+    try {
+      const obj = JSON.parse(decrypt(raw, k));
+      if (obj && typeof obj === "object") return obj as Record<string, unknown>;
+    } catch {
+      // 다음 키로
+    }
   }
+  return null;
+}
+
+/** note 복호화. 평문/복호불가는 원본 유지. */
+function decryptNote(n: Note, keys: Uint8Array[]): Note {
+  if (!keys.length || !isEncrypted(n.content)) return n;
+  const obj = tryDecrypt(n.content, keys);
+  if (!obj) return n; // 암호문 보존
+  const content = typeof obj.c === "string" ? obj.c : "";
+  return { ...n, content, title: firstLine(content) || n.title };
 }
 
 /** task 복호화(SchoolDesk가 description 에 {t,d} 암호화). */
-function decryptTask(t: Task, key: Uint8Array | null): Task {
-  if (!key || !isEncrypted(t.description)) return t;
-  try {
-    const obj = JSON.parse(decrypt(t.description as string, key));
-    return {
-      ...t,
-      title: typeof obj?.t === "string" && obj.t ? obj.t : t.title,
-      description: typeof obj?.d === "string" ? obj.d : "",
-    };
-  } catch {
-    return t; // 암호문 보존
-  }
+function decryptTask(t: Task, keys: Uint8Array[]): Task {
+  if (!keys.length || !isEncrypted(t.description)) return t;
+  const obj = tryDecrypt(t.description as string, keys);
+  if (!obj) return t; // 암호문 보존
+  return {
+    ...t,
+    title: typeof obj.t === "string" && obj.t ? obj.t : t.title,
+    description: typeof obj.d === "string" ? obj.d : "",
+  };
 }
 
 /** event 복호화(SchoolDesk가 description 에 {t,d,l} 암호화). */
-function decryptEvent(e: CalendarEvent, key: Uint8Array | null): CalendarEvent {
-  if (!key || !isEncrypted(e.description)) return e;
-  try {
-    const obj = JSON.parse(decrypt(e.description as string, key));
-    return {
-      ...e,
-      title: typeof obj?.t === "string" && obj.t ? obj.t : e.title,
-      description: typeof obj?.d === "string" ? obj.d : "",
-      location: typeof obj?.l === "string" ? obj.l : "",
-    };
-  } catch {
-    return e; // 암호문 보존
-  }
+function decryptEvent(e: CalendarEvent, keys: Uint8Array[]): CalendarEvent {
+  if (!keys.length || !isEncrypted(e.description)) return e;
+  const obj = tryDecrypt(e.description as string, keys);
+  if (!obj) return e; // 암호문 보존
+  return {
+    ...e,
+    title: typeof obj.t === "string" && obj.t ? obj.t : e.title,
+    description: typeof obj.d === "string" ? obj.d : "",
+    location: typeof obj.l === "string" ? obj.l : "",
+  };
 }
 
 // 쓰기 암호화 — 키 없으면 평문 그대로. 자유텍스트 필드가 페이로드에 있을 때만 묶어 암호화한다
@@ -444,9 +451,9 @@ class ApiClient {
 
   async getTasks(): Promise<Task[]> {
     const tasks = await this.fetch<Task[]>("/api/tasks");
-    const key = await getE2EEKey();
-    if (!key || !Array.isArray(tasks)) return tasks;
-    return tasks.map((t) => decryptTask(t, key));
+    const keys = await getE2EEKeysForDecrypt();
+    if (!keys.length || !Array.isArray(tasks)) return tasks;
+    return tasks.map((t) => decryptTask(t, keys));
   }
 
   async createTask(data: CreateTaskPayload): Promise<Task> {
@@ -455,7 +462,7 @@ class ApiClient {
       method: "POST",
       body: body as unknown as Record<string, unknown>,
     });
-    return decryptTask(created, await getE2EEKey());
+    return decryptTask(created, await getE2EEKeysForDecrypt());
   }
 
   async updateTask(id: string, data: UpdateTaskPayload): Promise<Task> {
@@ -464,7 +471,7 @@ class ApiClient {
       method: "PATCH",
       body: body as unknown as Record<string, unknown>,
     });
-    return decryptTask(updated, await getE2EEKey());
+    return decryptTask(updated, await getE2EEKeysForDecrypt());
   }
 
   async deleteTask(id: string): Promise<void> {
@@ -547,9 +554,9 @@ class ApiClient {
     //    넣어도 스쿨데스크가 암호화한 메모가 영영 암호문으로 보였다(2026-07-13).
     const res = await this.fetch<Note[] | { notes: Note[] }>("/api/notes");
     const notes = Array.isArray(res) ? res : (res?.notes ?? []);
-    const key = await getE2EEKey();
-    if (!key || !Array.isArray(notes)) return notes;
-    return notes.map((n) => decryptNote(n, key));
+    const keys = await getE2EEKeysForDecrypt();
+    if (!keys.length || !Array.isArray(notes)) return notes;
+    return notes.map((n) => decryptNote(n, keys));
   }
 
   async createNote(data: CreateNotePayload): Promise<Note> {
@@ -558,7 +565,7 @@ class ApiClient {
       method: "POST",
       body: body as unknown as Record<string, unknown>,
     });
-    return decryptNote(created, await getE2EEKey());
+    return decryptNote(created, await getE2EEKeysForDecrypt());
   }
 
   async updateNote(id: string, data: UpdateNotePayload): Promise<Note> {
@@ -567,7 +574,7 @@ class ApiClient {
       method: "PATCH",
       body: body as unknown as Record<string, unknown>,
     });
-    return decryptNote(updated, await getE2EEKey());
+    return decryptNote(updated, await getE2EEKeysForDecrypt());
   }
 
   async deleteNote(id: string): Promise<void> {
@@ -633,8 +640,8 @@ class ApiClient {
       `/api/events?year=${year}&month=${month}`,
     );
     const events = res?.events ?? [];
-    const key = await getE2EEKey();
-    return key ? events.map((e) => decryptEvent(e, key)) : events;
+    const keys = await getE2EEKeysForDecrypt();
+    return keys.length ? events.map((e) => decryptEvent(e, keys)) : events;
   }
 
   // 특정 날짜의 일정 (date=YYYY-MM-DD)
@@ -643,8 +650,8 @@ class ApiClient {
       `/api/events?date=${date}`,
     );
     const events = res?.events ?? [];
-    const key = await getE2EEKey();
-    return key ? events.map((e) => decryptEvent(e, key)) : events;
+    const keys = await getE2EEKeysForDecrypt();
+    return keys.length ? events.map((e) => decryptEvent(e, keys)) : events;
   }
 
   async createEvent(data: CreateEventPayload): Promise<CalendarEvent> {
@@ -653,7 +660,7 @@ class ApiClient {
       method: "POST",
       body: body as unknown as Record<string, unknown>,
     });
-    return decryptEvent(created, await getE2EEKey());
+    return decryptEvent(created, await getE2EEKeysForDecrypt());
   }
 
   async updateEvent(
@@ -665,7 +672,7 @@ class ApiClient {
       method: "PATCH",
       body: body as unknown as Record<string, unknown>,
     });
-    return decryptEvent(updated, await getE2EEKey());
+    return decryptEvent(updated, await getE2EEKeysForDecrypt());
   }
 
   async deleteEvent(id: string): Promise<void> {
