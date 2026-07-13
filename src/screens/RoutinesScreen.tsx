@@ -194,6 +194,13 @@ export default function RoutinesScreen() {
             await api.deleteRoutine(routine.id);
             fetchRoutines();
           } catch (error) {
+            // 서버에 이미 없는 항목(404)이면 "삭제 실패"가 아니라 이미 지워진 것 →
+            // 화면의 옛 목록만 남은 상태이므로 조용히 새로고침해서 치운다.
+            const status = (error as { status?: number } | null)?.status;
+            if (status === 404) {
+              fetchRoutines();
+              return;
+            }
             Alert.alert("오류", "삭제에 실패했습니다");
           }
         },
