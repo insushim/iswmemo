@@ -103,6 +103,7 @@ interface CreateGoalPayload {
 }
 
 interface UpdateGoalPayload {
+  isPinned?: boolean;
   title?: string;
   description?: string | null;
   type?: GoalType;

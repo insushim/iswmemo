@@ -86,6 +86,8 @@ export interface Goal {
   endDate: string | null;
   color: string;
   icon: string;
+  /** 홈 헤더 고정 — 서버에 저장된다(계정 전환·재설치에도 유지). */
+  isPinned?: boolean;
   children?: Goal[];
   createdAt: string;
 }
