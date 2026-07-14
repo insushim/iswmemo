@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { API_URL } from "../lib/config";
 import { persistentGet, persistentDelete } from "../lib/storage";
 import { switchAccount, clearOnLogout } from "../lib/accountData";
+import { registerExpoPushToken } from "../lib/taskAlarm";
 import { useGoalStore } from "./goals";
 
 const { AlarmModule } = NativeModules;
@@ -60,6 +61,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         //    데이터가 잠깐 떴다가 사라진다(2026-07-14 실제 발생).
         await switchAccount(data.user?.id);
         useGoalStore.getState().resetPinnedGoals();
+
+        // 이 기기의 푸시 토큰을 **지금 로그인한 계정**으로 재등록한다.
+        // 안 하면 토큰이 이전 계정에 묶인 채라 새 계정의 변경 푸시(sync 신호)가 이 폰으로
+        // 오지 않아, 앱을 껐다 켜기 전엔 화면이 갱신되지 않는다(2026-07-15 실제 발생).
+        registerExpoPushToken().catch(() => {});
 
         // 사용자 정보 설정
         set({ user: data.user, isAuthenticated: true });
