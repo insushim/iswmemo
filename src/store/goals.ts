@@ -12,6 +12,8 @@ interface GoalStoreState {
   updatePinnedGoal: (goal: Goal, oldTitle?: string) => Promise<void>;
   syncPinnedGoals: (allGoals: Goal[]) => void;
   loadPinnedGoals: () => Promise<void>;
+  /** 계정 전환·로그아웃 시 헤더를 즉시 비운다(이전 사용자의 목표가 남지 않도록). */
+  resetPinnedGoals: () => void;
 }
 
 // set 먼저, persist는 백그라운드 — UI가 storage I/O에 블록되지 않도록
@@ -74,6 +76,10 @@ export const useGoalStore = create<GoalStoreState>((set, get) => ({
       set({ pinnedGoals: next });
       persistAsync(next);
     }
+  },
+
+  resetPinnedGoals: () => {
+    set({ pinnedGoals: [], isLoaded: false });
   },
 
   loadPinnedGoals: async () => {

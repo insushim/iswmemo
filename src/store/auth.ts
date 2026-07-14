@@ -4,6 +4,8 @@ import { User } from "../types";
 import { api } from "../lib/api";
 import { API_URL } from "../lib/config";
 import { persistentGet, persistentDelete } from "../lib/storage";
+import { switchAccount, clearOnLogout } from "../lib/accountData";
+import { useGoalStore } from "./goals";
 
 const { AlarmModule } = NativeModules;
 
@@ -52,6 +54,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // 토큰 저장은 api.setToken 한 곳에서 전 레이어(SecureStore·SharedPreferences·파일)
         // + 네이티브 알람 토큰까지 일괄 처리한다. (중복 저장 제거)
         await api.setToken(data.token);
+
+        // ⚠️ 다른 계정으로 바뀌었으면 이전 계정의 로컬 캐시를 **먼저** 지운다.
+        //    안 지우면 헤더의 고정 목표·할일·습관 캐시가 남아, 새 계정 화면에 이전 사용자의
+        //    데이터가 잠깐 떴다가 사라진다(2026-07-14 실제 발생).
+        await switchAccount(data.user?.id);
+        useGoalStore.getState().resetPinnedGoals();
 
         // 사용자 정보 설정
         set({ user: data.user, isAuthenticated: true });
@@ -104,6 +112,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     // API 클라이언트 토큰도 삭제
     await api.clearToken();
+
+    // 계정에 딸린 로컬 데이터(캐시·고정 목표·암호화 키)도 정리 — 다음 사용자에게 남기지 않는다.
+    await clearOnLogout();
+    useGoalStore.getState().resetPinnedGoals();
 
     set({ user: null, isAuthenticated: false });
   },
