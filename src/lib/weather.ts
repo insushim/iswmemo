@@ -119,9 +119,11 @@ export async function startLocationWatch(onMove: () => void): Promise<void> {
 
     locationWatchSub = await Location.watchPositionAsync(
       {
-        accuracy: Location.Accuracy.High, // 동 단위 정밀도 위해 High (~10m). 배터리 영향 minor — distance/time 간격으로 제어
+        accuracy: Location.Accuracy.High, // 동 단위 정밀도 위해 High (~10m) — 정확도는 그대로 둔다
         distanceInterval: 80, // 80m 이동마다 콜백 (동 경계 감지)
-        timeInterval: 30000, // 최소 30초 간격
+        // 최소 60초 간격 — 30초에서 늘렸다. 동 경계 감지는 거리(80m) 기준이라 정확도는 그대로이고,
+        // 갱신 빈도만 절반이 된다(포그라운드 GPS 소모 감소). 앱이 안 보이면 watch 자체가 멈춘다.
+        timeInterval: 60000,
       },
       async (loc) => {
         const newLat = loc.coords.latitude;
@@ -172,10 +174,29 @@ export async function startLocationWatch(onMove: () => void): Promise<void> {
   }
 }
 
+/**
+ * GPS 추적이 끊겼던 적이 있는가(= 그 사이 이동을 놓쳤을 수 있다).
+ *
+ * 배경(2026-07-14 교차검증 지적): 앱이 안 보일 때 GPS watch 를 멈춰 배터리를 아끼는데,
+ * 그 동안 사용자가 동(洞)을 넘어 이동하면 아무도 그걸 모른다. 이때 "최근 위치가 3분 이내면
+ * 측위 생략" 규칙을 그대로 적용하면 **이동 전 좌표로 미세먼지 측정소를 잘못 고른다**.
+ * → 추적이 끊겼다 다시 켜지는 첫 조회에서는 신선도와 무관하게 **한 번은 실제로 측위**한다.
+ */
+let missedMovementWhileStopped = false;
+
+/** 위 플래그를 읽고 소비(1회성). getWeather 가 "이번엔 반드시 측위" 판단에 쓴다. */
+export function consumeMissedMovement(): boolean {
+  const missed = missedMovementWhileStopped;
+  missedMovementWhileStopped = false;
+  return missed;
+}
+
 export function stopLocationWatch(): void {
   if (locationWatchSub) {
     locationWatchSub.remove();
     locationWatchSub = null;
+    // 추적이 끊긴 동안의 이동은 감지할 수 없다 → 다음 조회 때 한 번은 실측위해야 한다.
+    missedMovementWhileStopped = true;
   }
   onSignificantMove = null;
 }
@@ -418,31 +439,43 @@ export async function getWeather(
         "location permission",
       );
       if (status === "granted") {
-        // 2순위: getLastKnownPosition (즉시, 네트워크 불필요)
+        // 2순위: getLastKnownPosition (즉시, GPS 라디오를 켜지 않는다)
         let newLat = 0,
           newLon = 0;
+        let lastKnownFresh = false;
+        // 추적이 끊겼던 적이 있으면(앱이 안 보이는 동안 GPS watch 를 껐다) 그 사이의 이동을
+        // 놓쳤을 수 있다 → 이번엔 신선도와 무관하게 실제로 측위한다(동 오판 방지).
+        const mustFix = consumeMissedMovement();
         try {
           const lastKnown = await Location.getLastKnownPositionAsync();
           if (lastKnown) {
             newLat = lastKnown.coords.latitude;
             newLon = lastKnown.coords.longitude;
+            // 방금 잡아 둔 위치(3분 이내)면 GPS 를 또 켤 이유가 없다 — 그 사이 동이 바뀔 만큼
+            // 움직였다면 watchPosition(80m)이 이미 잡아서 강제 갱신을 걸었을 것이다.
+            // ⚠️ 배터리: 예전엔 lastKnown 이 있어도 **무조건** High 정확도 측위를 다시 했다.
+            const ageMs = Date.now() - (lastKnown.timestamp ?? 0);
+            lastKnownFresh = !mustFix && ageMs >= 0 && ageMs < 3 * 60 * 1000;
           }
         } catch {}
 
         // 3순위: getCurrentPosition (High 정확도, 동 단위 표시 위해 ~10m 보장)
-        try {
-          const loc = await withTimeout(
-            Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.High,
-            }),
-            10000,
-            "GPS position",
-          );
-          newLat = loc.coords.latitude;
-          newLon = loc.coords.longitude;
-        } catch (gpsErr) {
-          // getCurrentPosition 실패해도 lastKnown이 있으면 OK
-          if (newLat === 0) throw gpsErr;
+        //   — 최근 위치가 신선하지 않을 때만. 신선하면 건너뛴다(정확도 동일, 배터리만 절약).
+        if (!lastKnownFresh) {
+          try {
+            const loc = await withTimeout(
+              Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.High,
+              }),
+              10000,
+              "GPS position",
+            );
+            newLat = loc.coords.latitude;
+            newLon = loc.coords.longitude;
+          } catch (gpsErr) {
+            // getCurrentPosition 실패해도 lastKnown이 있으면 OK
+            if (newLat === 0) throw gpsErr;
+          }
         }
 
         if (newLat !== 0) {

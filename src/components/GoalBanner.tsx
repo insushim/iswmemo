@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, AppState } from "react-native";
+import React from "react";
+import { View, Text, StyleSheet } from "react-native";
 import { Target } from "lucide-react-native";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { useTheme } from "../lib/theme";
 import { useGoalStore } from "../store/goals";
 import { useBannerStore } from "../store/banner";
+import { useMinuteClock } from "../lib/minuteClock";
 import {
   getDustLevel,
   getDustLevel10,
@@ -18,20 +19,10 @@ export default function GoalBanner() {
   const { pinnedGoals } = useGoalStore();
   const weather = useBannerStore((s) => s.weather);
   const battery = useBannerStore((s) => s.battery);
-  const [now, setNow] = useState(new Date());
-
-  useEffect(() => {
-    // 매 초 갱신 (분이 바뀌는 순간을 놓치지 않도록)
-    const intervalId = setInterval(() => setNow(new Date()), 1000);
-    // foreground 복귀 시 즉시 갱신
-    const appStateSub = AppState.addEventListener("change", (state) => {
-      if (state === "active") setNow(new Date());
-    });
-    return () => {
-      clearInterval(intervalId);
-      appStateSub.remove();
-    };
-  }, []);
+  // 시계는 분까지만 보여준다 → 초당 갱신은 필요 없다. 앱 전체가 공유하는 타이머 하나가
+  // '분이 바뀔 때만' 깨어난다(백그라운드에선 멈춤). 예전엔 화면마다 1초 타이머가 따로 돌아
+  // 탭을 여러 개 열면 그만큼 겹쳐 돌았다 — 배터리만 먹고 화면은 똑같았다.
+  const now = useMinuteClock();
 
   const hour = now.getHours();
   const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;

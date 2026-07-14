@@ -207,8 +207,31 @@ export default function SimpleHomeScreen() {
   });
   useEffect(() => {
     if (!hasTimerTasks) return;
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
+    // 초 단위 카운트다운은 **화면에 보일 때만** 돈다. 화면이 꺼지거나 앱이 백그라운드로 가면
+    // 멈추고, 돌아올 때 현재 시각으로 즉시 맞춘다(남은 시간은 시각 계산이라 오차 없음).
+    // 실제 알람은 안드로이드 AlarmManager 가 울리므로 이 타이머가 멈춰도 알람은 정상이다.
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (interval) return;
+      interval = setInterval(() => setNow(Date.now()), 1000);
+    };
+    const stop = () => {
+      if (interval) clearInterval(interval);
+      interval = null;
+    };
+    if (AppState.currentState === "active") start();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        setNow(Date.now());
+        start();
+      } else {
+        stop();
+      }
+    });
+    return () => {
+      stop();
+      sub.remove();
+    };
   }, [hasTimerTasks]);
 
   useFocusEffect(
