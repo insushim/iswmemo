@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, useWindowDimensions } from "react-native";
 import { Target } from "lucide-react-native";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../lib/theme";
 import { useGoalStore } from "../store/goals";
 import { useBannerStore } from "../store/banner";
@@ -17,7 +16,6 @@ import {
 
 export default function GoalBanner() {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const { pinnedGoals } = useGoalStore();
   const weather = useBannerStore((s) => s.weather);
   const battery = useBannerStore((s) => s.battery);
@@ -48,11 +46,10 @@ export default function GoalBanner() {
         {
           backgroundColor: colors.card,
           borderBottomColor: colors.border,
-          // 안드로이드는 상태바를 숨겨 헤더가 화면 맨 위(가운데 펀치홀 카메라 자리)까지
-          // 올라간다. 디스플레이 컷아웃 높이(insets.top)만큼 위 여백을 줘 내용이 카메라
-          // 아래로 내려오게 한다(2026-07-15: 작은 폰에서 헤더가 펀치홀에 잘림). 컷아웃이
-          // 없거나 이미 안전하면 insets.top≈0 이라 큰 폰(S25 Ultra) 레이아웃은 그대로.
-          paddingTop: insets.top + 4,
+          // 안드로이드는 상태바를 숨겨 헤더가 화면 맨 위까지 꽉 차게 덮는 디자인(의도).
+          // 위 여백을 주면 안 된다 — insets.top 을 더했다가 큰 폰에 상단 빈칸이 생겼다(되돌림).
+          // 작은 폰의 펀치홀 겹침은 아래 화면폭 스케일(fs)로 글씨를 줄여 해결한다.
+          paddingTop: 4,
         },
       ]}
     >
