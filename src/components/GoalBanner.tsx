@@ -1,8 +1,9 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, useWindowDimensions } from "react-native";
 import { Target } from "lucide-react-native";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../lib/theme";
 import { useGoalStore } from "../store/goals";
 import { useBannerStore } from "../store/banner";
@@ -16,6 +17,7 @@ import {
 
 export default function GoalBanner() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { pinnedGoals } = useGoalStore();
   const weather = useBannerStore((s) => s.weather);
   const battery = useBannerStore((s) => s.battery);
@@ -23,6 +25,13 @@ export default function GoalBanner() {
   // '분이 바뀔 때만' 깨어난다(백그라운드에선 멈춤). 예전엔 화면마다 1초 타이머가 따로 돌아
   // 탭을 여러 개 열면 그만큼 겹쳐 돌았다 — 배터리만 먹고 화면은 똑같았다.
   const now = useMinuteClock();
+
+  // 화면 폭 기준 스케일 — 헤더가 고정 px 였어서 작은 폰에선 글씨가 상대적으로 커
+  // 내용이 잘리거나 축약됐다. S25(≈393dp)를 기준(1.0)으로 좁을수록 줄인다(하한 0.82).
+  // 큰 폰은 1.0 고정(과대 확대 방지). rem 처럼 폰트·핵심 치수에 곱한다.
+  const { width } = useWindowDimensions();
+  const s = Math.min(1, Math.max(0.82, width / 393));
+  const fs = (n: number) => Math.round(n * s);
 
   const hour = now.getHours();
   const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
@@ -39,28 +48,37 @@ export default function GoalBanner() {
         {
           backgroundColor: colors.card,
           borderBottomColor: colors.border,
-          paddingTop: 4,
+          // 안드로이드는 상태바를 숨겨 헤더가 화면 맨 위(가운데 펀치홀 카메라 자리)까지
+          // 올라간다. 디스플레이 컷아웃 높이(insets.top)만큼 위 여백을 줘 내용이 카메라
+          // 아래로 내려오게 한다(2026-07-15: 작은 폰에서 헤더가 펀치홀에 잘림). 컷아웃이
+          // 없거나 이미 안전하면 insets.top≈0 이라 큰 폰(S25 Ultra) 레이아웃은 그대로.
+          paddingTop: insets.top + 4,
         },
       ]}
     >
       {/* 시계(좌) + 날짜/기온·날씨아이콘 2줄(flex:1) + 우측 2줄 블록(미세먼지·배터리/출처) */}
       <View style={styles.mainRow}>
         {/* 시계 */}
-        <Text style={[styles.clock, { color: colors.foreground }]}>
+        <Text
+          style={[styles.clock, { color: colors.foreground, fontSize: fs(32) }]}
+          allowFontScaling={false}
+        >
           {clockStr}
         </Text>
         {/* 날짜+기온 / 날씨아이콘 — 2줄 블록 */}
         <View style={styles.infoBlock}>
           <Text
-            style={[styles.infoLine1, { color: colors.foreground }]}
+            style={[styles.infoLine1, { color: colors.foreground, fontSize: fs(14) }]}
             numberOfLines={1}
+            allowFontScaling={false}
           >
             {dateStr}({dayStr}){weather ? ` ${weather.temperature}°` : ""}
           </Text>
           {weather && (
             <Text
-              style={[styles.infoLine2, { color: colors.foreground }]}
+              style={[styles.infoLine2, { color: colors.foreground, fontSize: fs(13) }]}
               numberOfLines={1}
+              allowFontScaling={false}
             >
               오전{weather.morningIcon} 오후{weather.afternoonIcon}
             </Text>
@@ -75,8 +93,9 @@ export default function GoalBanner() {
                 <Text
                   style={[
                     styles.dustText,
-                    { color: getDustColor10(weather.pm10) },
+                    { color: getDustColor10(weather.pm10), fontSize: fs(13) },
                   ]}
+                  allowFontScaling={false}
                 >
                   미세{weather.pm10}
                   {getDustLevel10(weather.pm10)}
@@ -84,8 +103,9 @@ export default function GoalBanner() {
                 <Text
                   style={[
                     styles.dustText,
-                    { color: getDustColor(weather.pm25), marginLeft: 3 },
+                    { color: getDustColor(weather.pm25), marginLeft: 3, fontSize: fs(13) },
                   ]}
+                  allowFontScaling={false}
                 >
                   초미세{weather.pm25}
                   {getDustLevel(weather.pm25)}
@@ -122,7 +142,9 @@ export default function GoalBanner() {
                       },
                     ]}
                   />
-                  <Text style={styles.batteryLabel}>{battery}%</Text>
+                  <Text style={styles.batteryLabel} allowFontScaling={false}>
+                    {battery}%
+                  </Text>
                 </View>
                 <View
                   style={[
@@ -145,6 +167,7 @@ export default function GoalBanner() {
             <Text
               style={[styles.sourceText, { color: colors.mutedForeground }]}
               numberOfLines={1}
+              allowFontScaling={false}
             >
               {weather.locationName ? `📍${weather.locationName} · ` : ""}
               {weather.stationName ? `${weather.stationName} · ` : ""}
@@ -175,6 +198,7 @@ export default function GoalBanner() {
               <Text
                 style={[styles.goalText, { color: colors.foreground }]}
                 numberOfLines={1}
+                allowFontScaling={false}
               >
                 {goal.title}
               </Text>
@@ -184,7 +208,10 @@ export default function GoalBanner() {
       ) : (
         <View style={styles.emptyRow}>
           <Target size={14} color={colors.mutedForeground} />
-          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+          <Text
+            style={[styles.emptyText, { color: colors.mutedForeground }]}
+            allowFontScaling={false}
+          >
             목표를 고정해보세요
           </Text>
         </View>
