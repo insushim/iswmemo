@@ -193,7 +193,9 @@ function decryptNote(n: Note, keys: Uint8Array[]): Note {
   const obj = tryDecrypt(n.content, keys);
   if (!obj) return n; // 암호문 보존
   const content = typeof obj.c === "string" ? obj.c : "";
-  return { ...n, content, title: firstLine(content) || n.title };
+  // 복호 성공 = 잠긴 게 아니다. 내용이 비어 있어도 서버의 '🔒 메모' placeholder 제목으로
+  // 되돌리지 않는다(그러면 빈 메모가 자물쇠로 보인다 — 2026-07-15). 빈 메모 = 빈 제목.
+  return { ...n, content, title: firstLine(content) };
 }
 
 /** task 복호화(SchoolDesk가 description 에 {t,d} 암호화). */
