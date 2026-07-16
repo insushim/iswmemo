@@ -137,27 +137,26 @@ export default function SimpleHomeScreen() {
       if (!Array.isArray(tasksRes)) return;
       const filtered = tasksRes.filter((t: Task) => !t.isCompleted);
       // 화면에 보이던 순서를 보존한다. 알람 "확인" 후 앱 복귀 등으로 refetch가 일어나도
-      // 할일 위치가 서버 정렬로 재배치돼 "중간으로 이동"하는 것을 막는다(사용자 요구:
-      // 위치 그대로). 기존 항목은 현재 순서대로 서버 최신값으로 갱신, 새 항목(다른 기기
-      // 추가 등)만 뒤에 추가, 완료·삭제로 사라진 항목은 제거.
+      // 기존 할일 위치가 서버 정렬로 재배치돼 "중간으로 이동"하는 것을 막는다(사용자 요구:
+      // 위치 그대로). 기존 항목은 현재 순서대로 서버 최신값으로 갱신하되,
+      // **새 항목(방금 추가·다른 기기 추가)은 맨 앞에 넣는다** — "새 할일은 무조건 맨 위"라는
+      // 기대에 맞춘다(2026-07-16 수정: 예전엔 뒤에 붙여 재시작 시 새 할일이 바닥으로 갔다).
+      // 서버 목록(filtered)은 최신순이라 그 순서를 유지해 앞에 붙이면 가장 최신이 맨 위.
       setTasks((prev) => {
         let merged: Task[];
         if (!prev || prev.length === 0) {
           merged = filtered;
         } else {
           const serverById = new Map(filtered.map((t: Task) => [t.id, t]));
-          const seen = new Set<string>();
-          merged = [];
+          const prevIds = new Set(prev.map((t: Task) => t.id));
+          const existingInOrder: Task[] = [];
           for (const t of prev) {
             const s = serverById.get(t.id);
-            if (s) {
-              merged.push(s);
-              seen.add(t.id);
-            }
+            if (s) existingInOrder.push(s);
           }
-          for (const t of filtered) {
-            if (!seen.has(t.id)) merged.push(t);
-          }
+          // prev 에 없던 서버 항목 = 새 항목 → 최신순(서버 순서) 그대로 맨 앞에
+          const newItems = filtered.filter((t: Task) => !prevIds.has(t.id));
+          merged = [...newItems, ...existingInOrder];
         }
         if (merged.length > 0) {
           SecureStore.setItemAsync(
