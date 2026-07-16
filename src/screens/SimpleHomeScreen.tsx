@@ -152,7 +152,14 @@ export default function SimpleHomeScreen() {
           const existingInOrder: Task[] = [];
           for (const t of prev) {
             const s = serverById.get(t.id);
-            if (s) existingInOrder.push(s);
+            if (s) {
+              existingInOrder.push(s);
+            } else if (String(t.id).startsWith("temp-")) {
+              // 아직 서버 저장 전인 임시 항목(방금 추가) — 서버 목록에 없다고 버리면
+              // 저장 실패·지연 때 사용자가 방금 쓴 할일이 조용히 사라진다(2026-07-16 실측).
+              // 임시 항목은 그대로 유지한다(저장되면 실제 id 로 바뀌어 다음부터 서버분과 합류).
+              existingInOrder.push(t);
+            }
           }
           // prev 에 없던 서버 항목 = 새 항목 → 최신순(서버 순서) 그대로 맨 앞에
           const newItems = filtered.filter((t: Task) => !prevIds.has(t.id));
@@ -414,10 +421,29 @@ export default function SimpleHomeScreen() {
         } catch {}
       }
     } catch (e) {
-      // 서버에 생성됐을 수 있으므로, 다시 불러와서 동기화
-      try {
-        await fetchData();
-      } catch {}
+      if (!isEditing && tempId) {
+        // 생성 실패 — 방금 쓴 할일을 절대 조용히 버리지 않는다(2026-07-16: fetchData 로
+        // 재조회하다 임시 항목이 사라져 유실됐다). 한 번 재시도하고, 그래도 안 되면
+        // 목록에 남겨둔 채 사용자에게 알린다(병합에서 temp 항목은 보존됨).
+        try {
+          const retry = (await api.createTask(td)) as any;
+          if (retry?.id) {
+            setTasks((prev) =>
+              prev.map((t) => (t.id === tempId ? { ...t, id: retry.id } : t)),
+            );
+          }
+        } catch {
+          Alert.alert(
+            "저장 실패",
+            "방금 쓴 할일이 서버에 저장되지 않았어요. 목록에는 남겨뒀으니, 인터넷 연결을 확인한 뒤 그 할일을 지우고 다시 추가해 주세요.",
+          );
+        }
+      } else {
+        // 편집 실패 — 서버 최신값으로 정합성 회복(임시 항목 유실 위험 없음)
+        try {
+          await fetchData();
+        } catch {}
+      }
     }
   };
 
