@@ -2,13 +2,13 @@
   "expo": {
     "name": "또박또박",
     "slug": "growthpad-mobile",
-    "version": "3.13.30",
+    "version": "3.13.31",
     "owner": "insushim",
     "orientation": "portrait",
     "updates": {
       "enabled": false
     },
-    "runtimeVersion": "3.13.30",
+    "runtimeVersion": "3.13.31",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "scheme": "growthpad",
@@ -29,7 +29,7 @@
       },
       "package": "com.growthpad.app",
       "edgeToEdgeEnabled": false,
-      "versionCode": 157,
+      "versionCode": 158,
       "permissions": [
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",

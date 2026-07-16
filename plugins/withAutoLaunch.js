@@ -1424,6 +1424,48 @@ public class AlarmDeleteReceiver extends BroadcastReceiver {
           );
           fs.writeFileSync(ktFile, content);
         }
+        // 잠금화면 위에 우리 앱이 떠 있는 동안 전화(셀룰러/카톡·SNS VoIP)가 오면 우리 창이
+        // 전화 화면을 덮어 못 받던 문제 → 통화 감지 시 우리 task를 뒤로 물린다. 별도 키로 삽입.
+        if (!content.includes('callWatch')) {
+          content = content.replace(
+            'override fun getMainComponentName(): String = "main"',
+            `// 잠금화면(우리 앱)이 떠 있는 동안 전화가 오면 우리 창이 전화 화면을 덮어 못 받는 문제 방지.
+  // 통화가 감지되면 우리 task를 뒤로 물려(moveTaskToBack) 전화 UI(셀룰러/카톡·SNS VoIP)가 보이게 한다.
+  // 판정은 AudioManager mode(권한 불필요): RINGTONE(수신 벨)·IN_CALL(셀룰러)·IN_COMMUNICATION(VoIP).
+  // 우리 창이 앞에 있을 때만(onResume~onPause) 짧게 폴링하므로 배터리 영향은 무시할 수준.
+  private var callAudioManager: android.media.AudioManager? = null
+  private val callHandler = android.os.Handler(android.os.Looper.getMainLooper())
+  private val callWatch = object : Runnable {
+    override fun run() {
+      val mode = callAudioManager?.mode
+      if (mode == android.media.AudioManager.MODE_RINGTONE ||
+          mode == android.media.AudioManager.MODE_IN_CALL ||
+          mode == android.media.AudioManager.MODE_IN_COMMUNICATION) {
+        try { moveTaskToBack(true) } catch (e: Exception) {}
+        return
+      }
+      callHandler.postDelayed(this, 700)
+    }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    try {
+      callAudioManager = getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+      callHandler.removeCallbacks(callWatch)
+      callHandler.post(callWatch) // 즉시 1회 + 반복(이미 벨이 울리는 중이면 바로 물러난다)
+    } catch (e: Exception) {}
+  }
+
+  override fun onPause() {
+    super.onPause()
+    callHandler.removeCallbacks(callWatch)
+  }
+
+  override fun getMainComponentName(): String = "main"`
+          );
+          fs.writeFileSync(ktFile, content);
+        }
       }
 
       // Modify MainApplication.kt to register AutoLaunchPackage and AlarmPackage

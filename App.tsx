@@ -17,6 +17,7 @@ import * as Location from "expo-location";
 import * as SplashScreen from "expo-splash-screen";
 import * as Notifications from "expo-notifications";
 import Navigation from "./src/navigation";
+import WhatsNewModal from "./src/components/WhatsNewModal";
 import { useAuthStore } from "./src/store/auth";
 import { useGoalStore } from "./src/store/goals";
 import { useSettingsStore } from "./src/store/settings";
@@ -383,6 +384,7 @@ export default function App() {
           style={darkMode ? "light" : "dark"}
         />
         {appInitialized ? <Navigation /> : null}
+        {appInitialized && isAuthenticated ? <WhatsNewModal /> : null}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
