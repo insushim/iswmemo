@@ -13,6 +13,12 @@ export interface ChangelogEntry {
 // 최신이 위로. 사용자에게 보여줄 한 줄 문구만(기술 용어 X).
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "3.13.32",
+    notes: [
+      "마이크 권한이 없을 때 오류 대신 '마이크 권한을 켜주세요' 안내가 뜨도록 고쳤어요.",
+    ],
+  },
+  {
     version: "3.13.31",
     notes: [
       "전화가 올 때 잠금화면 메모가 전화 화면을 가리지 않도록 고쳤어요(카톡·영상통화 등 포함).",

@@ -16,6 +16,14 @@ try {
   _useSpeechEvent = pkg.useSpeechRecognitionEvent;
 } catch {}
 
+function showMicPermissionGuide() {
+  Alert.alert(
+    "마이크 권한이 필요해요",
+    "음성으로 입력하려면 마이크 권한을 허용해야 해요.\n휴대폰 설정 › 앱 › 또박또박 › 권한에서 마이크를 켜주세요.",
+    [{ text: "확인" }],
+  );
+}
+
 export default function VoiceInput({
   onResult,
   color = "#6366f1",
@@ -35,9 +43,18 @@ export default function VoiceInput({
   });
   _useSpeechEvent("error", (event: any) => {
     setIsListening(false);
-    if (event.error !== "no-speech") {
-      Alert.alert("음성 인식 오류", event.error || "알 수 없는 오류");
+    const code = String(event?.error || "");
+    if (code === "no-speech") return; // 말이 없었을 뿐 — 조용히 무시
+    // 권한 거부류는 "오류"가 아니라 안내로 띄운다.
+    if (
+      code.includes("not-allowed") ||
+      code.includes("permission") ||
+      code.includes("audio")
+    ) {
+      showMicPermissionGuide();
+      return;
     }
+    Alert.alert("음성 인식 오류", event?.error || "알 수 없는 오류");
   });
 
   useEffect(() => {
@@ -79,6 +96,14 @@ export default function VoiceInput({
     }
 
     try {
+      // 시작 전에 마이크 권한을 확인·요청한다. 안 주면 원시 오류("not found" 등) 대신 안내를 띄운다.
+      if (typeof _speechModule.requestPermissionsAsync === "function") {
+        const perm = await _speechModule.requestPermissionsAsync();
+        if (perm && perm.granted === false) {
+          showMicPermissionGuide();
+          return;
+        }
+      }
       _speechModule.start({
         lang: "ko-KR",
         interimResults: false,
@@ -86,7 +111,16 @@ export default function VoiceInput({
       });
       setIsListening(true);
     } catch (e: any) {
-      Alert.alert("음성 인식 오류", e?.message || "시작할 수 없습니다.");
+      const msg = String(e?.message || "");
+      if (
+        msg.includes("not-allowed") ||
+        msg.includes("permission") ||
+        msg.toLowerCase().includes("audio")
+      ) {
+        showMicPermissionGuide();
+      } else {
+        Alert.alert("음성 인식 오류", e?.message || "시작할 수 없습니다.");
+      }
     }
   }, [isListening]);
 
