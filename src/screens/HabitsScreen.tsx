@@ -639,10 +639,10 @@ export default function HabitsScreen() {
                     renderRightActions={renderRightActionsRoutine(routine)}
                     overshootLeft={false}
                     overshootRight={false}
-                    leftThreshold={20}
-                    rightThreshold={20}
+                    leftThreshold={40}
+                    rightThreshold={40}
                     friction={1}
-                    activeOffsetX={[-8, 8]}
+                    activeOffsetX={[-24, 24]}
                     onSwipeableOpen={(direction) => {
                       if (direction === "left") {
                         Clipboard.setStringAsync(routine.name);
@@ -804,10 +804,10 @@ export default function HabitsScreen() {
                   renderRightActions={renderRightActionsHabit(habit)}
                   overshootLeft={false}
                   overshootRight={false}
-                  leftThreshold={20}
-                  rightThreshold={20}
+                  leftThreshold={40}
+                  rightThreshold={40}
                   friction={1}
-                  activeOffsetX={[-8, 8]}
+                  activeOffsetX={[-24, 24]}
                   onSwipeableOpen={(direction) => {
                     if (direction === "left") {
                       Clipboard.setStringAsync(habit.name);

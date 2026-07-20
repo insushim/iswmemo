@@ -612,13 +612,14 @@ export default function SimpleHomeScreen() {
           renderRightActions={renderRightActions(t)}
           overshootLeft={false}
           overshootRight={false}
-          leftThreshold={20}
-          rightThreshold={20}
+          leftThreshold={40}
+          rightThreshold={40}
           friction={1}
-          // 가로 8px만 움직여도 스와이프 활성화(리스트 pan은 activationDistance=20으로
-          // 세로 20px 이상에서만 발동하므로 경합이 갈린다). failOffsetY는 두지 않는다 —
+          // 가로 24px 이상 움직여야 스와이프 활성(예전 8px은 너무 민감해 꾹 눌러 드래그하는 중
+          // 살짝만 옆으로 가도 삭제/복사가 터졌다 — 2026-07-20). 리스트 세로 드래그(롱프레스+
+          // activationDistance=20)와 축이 갈려 경합이 정리된다. failOffsetY는 두지 않는다 —
           // 엄지 스와이프의 자연스러운 세로 휨에도 실패(씹힘)하지 않게.
-          activeOffsetX={[-8, 8]}
+          activeOffsetX={[-24, 24]}
           onSwipeableOpen={(direction) => {
             // 버튼을 다시 탭할 필요 없이 스와이프(드래그)만으로 바로 실행 → 반응성 개선.
             // (버튼은 스와이프 중 시각 피드백용으로 유지)

@@ -389,10 +389,10 @@ export default function GoalsScreen() {
                   renderRightActions={renderRightActions(goal)}
                   overshootLeft={false}
                   overshootRight={false}
-                  leftThreshold={20}
-                  rightThreshold={20}
+                  leftThreshold={40}
+                  rightThreshold={40}
                   friction={1}
-                  activeOffsetX={[-8, 8]}
+                  activeOffsetX={[-24, 24]}
                   onSwipeableOpen={(direction) => {
                     if (direction === "left") {
                       Clipboard.setStringAsync(goal.title);
