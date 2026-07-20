@@ -365,7 +365,7 @@ export default function NotesScreen() {
             drag,
             isActive,
           }: RenderItemParams<Note>) => (
-            <ScaleDecorator>
+            <ScaleDecorator activeScale={1.04}>
               <Swipeable
                 ref={(ref) => {
                   if (ref) swipeableRefs.current.set(note.id, ref);
@@ -394,11 +394,12 @@ export default function NotesScreen() {
                     {
                       backgroundColor: note.color || COLORS[0],
                       padding: cardPadding + 2,
-                      opacity: isActive ? 0.8 : 1,
+                      ...(isActive ? { borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.primary + "14", elevation: 8 } : {}),
                     },
                   ]}
                   onPress={() => handleEditNote(note)}
                   onLongPress={drag}
+                    delayLongPress={220}
                   disabled={isActive}
                 >
                   <View

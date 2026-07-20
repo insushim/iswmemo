@@ -624,7 +624,7 @@ export default function CalendarScreen() {
     const past = isPast(schedule);
     const t = eventTime(schedule);
     return (
-      <ScaleDecorator>
+      <ScaleDecorator activeScale={1.04}>
         <Swipeable
           ref={(ref) => {
             if (ref) swipeableRefs.current.set(`event-${schedule.id}`, ref);
@@ -649,13 +649,14 @@ export default function CalendarScreen() {
               {
                 backgroundColor: colors.card,
                 padding: cardPadding,
-                opacity: isActive ? 0.8 : 1,
+                ...(isActive ? { borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.primary + "14", elevation: 8 } : {}),
                 borderLeftColor: PERSONAL_COLOR,
                 borderLeftWidth: 3,
               },
             ]}
             onPress={() => openEditEventModal(schedule)}
             onLongPress={drag}
+                    delayLongPress={220}
             disabled={isActive}
           >
             <View style={styles.scheduleCenter}>

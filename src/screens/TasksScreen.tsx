@@ -347,7 +347,7 @@ export default function TasksScreen() {
           drag,
           isActive,
         }: RenderItemParams<Task>) => (
-          <ScaleDecorator>
+          <ScaleDecorator activeScale={1.04}>
             <Swipeable
               ref={(ref) => {
                 if (ref) swipeableRefs.current.set(task.id, ref);
@@ -379,11 +379,12 @@ export default function TasksScreen() {
                   {
                     borderLeftWidth: 3,
                     borderLeftColor: getPriorityColor(task.priority),
-                    opacity: isActive ? 0.8 : 1,
+                    ...(isActive ? { borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.primary + "14", elevation: 8 } : {}),
                   },
                 ]}
                 onPress={() => handleToggleTask(task)}
                 onLongPress={drag}
+                    delayLongPress={220}
                 disabled={isActive}
               >
                 <View

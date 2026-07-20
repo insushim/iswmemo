@@ -13,6 +13,12 @@ export interface ChangelogEntry {
 // 최신이 위로. 사용자에게 보여줄 한 줄 문구만(기술 용어 X).
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "3.13.34",
+    notes: [
+      "순서 바꾸기(꾹 눌러 이동)가 더 잘 되도록 고쳤어요 — 집으면 살짝 커지고 테두리·진동으로 '집었다'를 표시합니다.",
+    ],
+  },
+  {
     version: "3.13.33",
     notes: [
       "목록 좌우 스와이프가 너무 민감해 드래그 중 실수로 삭제·복사되던 문제를 고쳤어요(더 확실히 옆으로 밀어야 실행).",

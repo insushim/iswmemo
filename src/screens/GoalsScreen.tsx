@@ -380,7 +380,7 @@ export default function GoalsScreen() {
           }: RenderItemParams<Goal>) => {
             const isPinned = pinnedGoals.some((g) => g.id === goal.id);
             return (
-              <ScaleDecorator>
+              <ScaleDecorator activeScale={1.04}>
                 <Swipeable
                   ref={(ref) => {
                     if (ref) swipeableRefs.current.set(goal.id, ref);
@@ -411,11 +411,12 @@ export default function GoalsScreen() {
                         borderWidth: isPinned ? 1.5 : 0,
                         borderColor: isPinned ? colors.primary : "transparent",
                         padding: cardPadding,
-                        opacity: isActive ? 0.8 : 1,
+                        ...(isActive ? { borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.primary + "14", elevation: 8 } : {}),
                       },
                     ]}
                     onPress={() => openEditModal(goal)}
                     onLongPress={drag}
+                    delayLongPress={220}
                     disabled={isActive}
                   >
                     <View style={styles.goalTop}>

@@ -630,7 +630,7 @@ export default function HabitsScreen() {
               const progress =
                 totalItems > 0 ? completedItems.length / totalItems : 0;
               return (
-                <ScaleDecorator>
+                <ScaleDecorator activeScale={1.04}>
                   <Swipeable
                     ref={(ref) => {
                       if (ref) swipeableRefs.current.set(routine.id, ref);
@@ -658,7 +658,7 @@ export default function HabitsScreen() {
                         {
                           backgroundColor: colors.card,
                           padding: cardPadding,
-                          opacity: isActive ? 0.8 : 1,
+                          ...(isActive ? { borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.primary + "14", elevation: 8 } : {}),
                         },
                       ]}
                     >
@@ -666,6 +666,7 @@ export default function HabitsScreen() {
                         activeOpacity={0.7}
                         style={styles.routineHeader}
                         onLongPress={drag}
+                    delayLongPress={220}
                         onPress={() => openEditRoutineModal(routine)}
                       >
                         <List size={14} color={colors.primary} />
@@ -795,7 +796,7 @@ export default function HabitsScreen() {
             const habit = item as HabitEntry;
             const isDone = habit.completedDates?.includes(today);
             return (
-              <ScaleDecorator>
+              <ScaleDecorator activeScale={1.04}>
                 <Swipeable
                   ref={(ref) => {
                     if (ref) swipeableRefs.current.set(habit.id, ref);
@@ -827,11 +828,12 @@ export default function HabitsScreen() {
                         borderLeftWidth: 3,
                         paddingVertical: cardPadding,
                         paddingHorizontal: cardPadding,
-                        opacity: isActive ? 0.8 : 1,
+                        ...(isActive ? { borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.primary + "14", elevation: 8 } : {}),
                       },
                     ]}
                     onPress={() => handleCompleteHabit(habit)}
                     onLongPress={drag}
+                    delayLongPress={220}
                     disabled={isActive}
                   >
                     <Text

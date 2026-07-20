@@ -42,6 +42,7 @@ import {
   Copy,
 } from "lucide-react-native";
 import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
 import {
   format,
   addDays,
@@ -602,7 +603,7 @@ export default function SimpleHomeScreen() {
     const timerExpired =
       timer && t.dueDate && parseISO(t.dueDate).getTime() <= now;
     return (
-      <ScaleDecorator>
+      <ScaleDecorator activeScale={1.04}>
         <Swipeable
           ref={(ref) => {
             if (ref) swipeableRefs.current.set(t.id, ref);
@@ -641,7 +642,6 @@ export default function SimpleHomeScreen() {
                 backgroundColor: colors.card,
                 paddingVertical: cardPadding,
                 paddingHorizontal: cardPadding + 2,
-                opacity: isActive ? 0.8 : 1,
               },
               o &&
                 !timer && {
@@ -652,12 +652,28 @@ export default function SimpleHomeScreen() {
                 borderLeftColor: timerExpired ? "#ef4444" : "#f59e0b",
                 borderLeftWidth: 3,
               },
+              // 집어든(이동 준비) 상태 — 흐리게 하지 않고 테두리+그림자+살짝 배경으로 "들렸다"를 명확히.
+              isActive && {
+                borderWidth: 2,
+                borderColor: colors.primary,
+                backgroundColor: colors.primary + "14",
+                elevation: 8,
+                shadowColor: "#000",
+                shadowOpacity: 0.28,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 4 },
+              },
             ]}
             onPress={() => openEditModal(t)}
             onLongPress={() => {
               closeAllSwipeables();
+              // 집었다는 확실한 신호 — 진동 + (아래 스타일에서) 커지고 테두리 표시
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(
+                () => {},
+              );
               drag();
             }}
+            delayLongPress={220}
             disabled={isActive}
           >
             <View style={styles.taskContent}>
